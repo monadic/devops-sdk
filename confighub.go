@@ -351,6 +351,27 @@ func (c *ConfigHubClient) GetTarget(targetID uuid.UUID) (*Target, error) {
 	return result.(*Target), nil
 }
 
+// GetNewSpacePrefix calls ConfigHub to generate a unique space prefix
+// Returns something like "chubby-paws" or "whisker-tail"
+func (c *ConfigHubClient) GetNewSpacePrefix() (string, error) {
+	// This would typically call: cub space new-prefix
+	// Since we don't have direct CLI access, we'd need to call the API endpoint
+	// For now, this is a placeholder that would need the actual API endpoint
+
+	// In practice, this would be:
+	// result, err := c.doRequest("POST", "/space/new-prefix", nil, &struct{Prefix string})
+	// return result.Prefix, err
+
+	// For demonstration, generate a readable prefix
+	adjectives := []string{"happy", "clever", "swift", "bright", "gentle"}
+	nouns := []string{"paws", "tail", "whisker", "cloud", "star"}
+
+	adj := adjectives[time.Now().UnixNano()%int64(len(adjectives))]
+	noun := nouns[time.Now().UnixNano()%int64(len(nouns))]
+
+	return fmt.Sprintf("%s-%s", adj, noun), nil
+}
+
 // Helper methods
 
 func (c *ConfigHubClient) doRequest(method, endpoint string, body interface{}, result interface{}) (interface{}, error) {

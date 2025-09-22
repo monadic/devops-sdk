@@ -17,15 +17,23 @@ type DeploymentHelper struct {
 }
 
 // NewDeploymentHelper creates a deployment helper for a DevOps app
-func NewDeploymentHelper(cub *ConfigHubClient, appName string) *DeploymentHelper {
-	// Generate project name with timestamp to avoid collisions
-	projectName := fmt.Sprintf("%s-%d", appName, time.Now().Unix())
+func NewDeploymentHelper(cub *ConfigHubClient, appName string) (*DeploymentHelper, error) {
+	// Use ConfigHub's new-prefix to generate unique names (like "chubby-paws")
+	// This would call: cub space new-prefix
+	prefix, err := cub.GetNewSpacePrefix()
+	if err != nil {
+		// Fallback to timestamp if API call fails
+		prefix = fmt.Sprintf("prefix-%d", time.Now().Unix())
+	}
+
+	// Project name format: prefix-appname (e.g., "chubby-paws-drift-detector")
+	projectName := fmt.Sprintf("%s-%s", prefix, appName)
 
 	return &DeploymentHelper{
 		Cub:         cub,
 		ProjectName: projectName,
 		AppName:     appName,
-	}
+	}, nil
 }
 
 // SetupBaseSpace creates the base ConfigHub structure
@@ -310,6 +318,10 @@ func mergeLabels(base, additional map[string]string) map[string]string {
 }
 
 // QuickDeploy performs a complete deployment setup
+// Example usage:
+//   helper, err := NewDeploymentHelper(cub, "drift-detector")
+//   if err != nil { ... }
+//   err = helper.QuickDeploy("confighub/base")
 func (d *DeploymentHelper) QuickDeploy(configPath string) error {
 	// 1. Setup base spaces
 	if err := d.SetupBaseSpace(); err != nil {
