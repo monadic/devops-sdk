@@ -462,3 +462,116 @@ func (c *ConfigHubClient) doRequestList(method, endpoint string, body interface{
 
 	return nil
 }
+
+// High-level convenience helpers
+
+// GetSpaceBySlug finds a space by its slug name
+func (c *ConfigHubClient) GetSpaceBySlug(slug string) (*Space, error) {
+	spaces, err := c.ListSpaces()
+	if err != nil {
+		return nil, fmt.Errorf("list spaces: %w", err)
+	}
+
+	// Filter by slug
+	for i, space := range spaces {
+		if space.Slug == slug {
+			return spaces[i], nil
+		}
+	}
+
+	return nil, fmt.Errorf("space not found: %s", slug)
+}
+
+
+// CreateSpaceWithUniquePrefix creates a space with a unique prefix + suffix
+func (c *ConfigHubClient) CreateSpaceWithUniquePrefix(suffix string, displayName string, labels map[string]string) (*Space, string, error) {
+	prefix, err := c.GetNewSpacePrefix()
+	if err != nil {
+		return nil, "", fmt.Errorf("get unique prefix: %w", err)
+	}
+
+	slug := fmt.Sprintf("%s-%s", prefix, suffix)
+	space, err := c.CreateSpace(CreateSpaceRequest{
+		Slug:        slug,
+		DisplayName: displayName,
+		Labels:      labels,
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("create space: %w", err)
+	}
+
+	return space, slug, nil
+}
+
+// CloneUnitWithUpstream creates a unit in the target space with an upstream relationship
+func (c *ConfigHubClient) CloneUnitWithUpstream(sourceSpaceID, targetSpaceID uuid.UUID, unitSlug string, additionalLabels map[string]string) (*Unit, error) {
+	// Get the source unit
+	sourceUnits, err := c.ListUnits(ListUnitsParams{
+		SpaceID: sourceSpaceID,
+		Where:   fmt.Sprintf("Slug = '%s'", unitSlug),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list source units: %w", err)
+	}
+
+	if len(sourceUnits) == 0 {
+		return nil, fmt.Errorf("source unit not found: %s", unitSlug)
+	}
+
+	sourceUnit := sourceUnits[0]
+
+	// Merge labels
+	labels := make(map[string]string)
+	for k, v := range sourceUnit.Labels {
+		labels[k] = v
+	}
+	for k, v := range additionalLabels {
+		labels[k] = v
+	}
+
+	// Create downstream unit with upstream relationship
+	return c.CreateUnit(targetSpaceID, CreateUnitRequest{
+		Slug:           sourceUnit.Slug,
+		DisplayName:    sourceUnit.DisplayName,
+		Data:           sourceUnit.Data,
+		Labels:         labels,
+		UpstreamUnitID: &sourceUnit.UnitID,
+	})
+}
+
+// BulkCloneUnitsWithUpstream clones multiple units from source to target space
+func (c *ConfigHubClient) BulkCloneUnitsWithUpstream(sourceSpaceID, targetSpaceID uuid.UUID, unitSlugs []string, additionalLabels map[string]string) ([]*Unit, error) {
+	var clonedUnits []*Unit
+
+	for _, slug := range unitSlugs {
+		unit, err := c.CloneUnitWithUpstream(sourceSpaceID, targetSpaceID, slug, additionalLabels)
+		if err != nil {
+			return nil, fmt.Errorf("clone unit %s: %w", slug, err)
+		}
+		clonedUnits = append(clonedUnits, unit)
+	}
+
+	return clonedUnits, nil
+}
+
+// ApplyUnitsInOrder applies units in the correct dependency order
+func (c *ConfigHubClient) ApplyUnitsInOrder(spaceID uuid.UUID, unitSlugs []string) error {
+	for _, slug := range unitSlugs {
+		units, err := c.ListUnits(ListUnitsParams{
+			SpaceID: spaceID,
+			Where:   fmt.Sprintf("Slug = '%s'", slug),
+		})
+		if err != nil {
+			return fmt.Errorf("list units for %s: %w", slug, err)
+		}
+
+		if len(units) > 0 {
+			err = c.ApplyUnit(spaceID, units[0].UnitID)
+			if err != nil {
+				return fmt.Errorf("apply unit %s: %w", slug, err)
+			}
+		}
+	}
+
+	return nil
+}

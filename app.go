@@ -141,6 +141,74 @@ func (app *DevOpsApp) Stop() {
     close(app.stopChan)
 }
 
+// RunWithInformers starts the app in event-driven mode using Kubernetes informers
+func (app *DevOpsApp) RunWithInformers(handler func() error) error {
+    app.Logger.Printf("%s v%s started in event-driven mode", app.Name, app.Version)
+    app.Logger.Printf("Description: %s", app.Description)
+
+    // Setup signal handling
+    sigChan := make(chan os.Signal, 1)
+    signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+    // Run initial execution
+    if err := handler(); err != nil {
+        app.Logger.Printf("Initial run error: %v", err)
+    }
+
+    // Setup Kubernetes informers (event-driven)
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    // Create event channel for Kubernetes events
+    eventChan := make(chan struct{}, 1)
+
+    // Start informer goroutine (this would be implemented per app)
+    go func() {
+        // This is a placeholder for actual informer implementation
+        // Real implementation would use controller-runtime or client-go informers
+        ticker := time.NewTicker(30 * time.Second) // Fallback polling
+        defer ticker.Stop()
+
+        for {
+            select {
+            case <-ticker.C:
+                select {
+                case eventChan <- struct{}{}:
+                default: // Don't block if channel is full
+                }
+            case <-ctx.Done():
+                return
+            }
+        }
+    }()
+
+    app.Logger.Println("Waiting for Kubernetes events...")
+
+    for {
+        select {
+        case <-eventChan:
+            app.Logger.Println("Processing Kubernetes event...")
+            if err := handler(); err != nil {
+                app.Logger.Printf("Event handler error: %v", err)
+                app.healthServer.SetHealthy(false, fmt.Sprintf("Event handler failed: %v", err))
+            } else {
+                app.healthServer.SetHealthy(true, "Event-driven processing")
+            }
+
+        case <-sigChan:
+            app.Logger.Println("Received shutdown signal")
+            cancel()
+            close(app.stopChan)
+            return nil
+
+        case <-app.stopChan:
+            app.Logger.Println("Stopping event-driven application")
+            cancel()
+            return nil
+        }
+    }
+}
+
 // GetEnvOrDefault gets an environment variable with a default value
 func GetEnvOrDefault(key, defaultValue string) string {
     if value := os.Getenv(key); value != "" {

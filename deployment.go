@@ -83,10 +83,17 @@ func (d *DeploymentHelper) SetupBaseSpace() error {
 
 // CreateStandardFilters creates common filters for DevOps apps
 func (d *DeploymentHelper) CreateStandardFilters() error {
-	filtersSpaceID := d.getSpaceID(fmt.Sprintf("%s-filters", d.ProjectName))
+	filtersSpaceID, err := d.getSpaceIDOrCreate(
+		fmt.Sprintf("%s-filters", d.ProjectName),
+		fmt.Sprintf("%s Filters", d.AppName),
+		map[string]string{"type": "filters", "project": d.ProjectName},
+	)
+	if err != nil {
+		return fmt.Errorf("get filters space: %w", err)
+	}
 
 	// All project units filter
-	_, err := d.Cub.CreateFilter(filtersSpaceID, CreateFilterRequest{
+	_, err = d.Cub.CreateFilter(filtersSpaceID, CreateFilterRequest{
 		Slug:        "all",
 		DisplayName: "All Project Units",
 		From:        "Unit",
@@ -123,7 +130,10 @@ func (d *DeploymentHelper) CreateStandardFilters() error {
 
 // LoadBaseConfigurations loads K8s manifests as ConfigHub units
 func (d *DeploymentHelper) LoadBaseConfigurations(configPath string) error {
-	baseSpaceID := d.getSpaceID(fmt.Sprintf("%s-base", d.ProjectName))
+	baseSpaceID, err := d.getSpaceID(fmt.Sprintf("%s-base", d.ProjectName))
+	if err != nil {
+		return fmt.Errorf("get base space: %w", err)
+	}
 
 	// Standard files to load
 	configs := []struct {
@@ -141,7 +151,7 @@ func (d *DeploymentHelper) LoadBaseConfigurations(configPath string) error {
 	for _, cfg := range configs {
 		filePath := filepath.Join(configPath, cfg.file)
 		// In real implementation, would read file content
-		_, err := d.Cub.CreateUnit(baseSpaceID, CreateUnitRequest{
+		_, err = d.Cub.CreateUnit(baseSpaceID, CreateUnitRequest{
 			Slug:        cfg.name,
 			DisplayName: fmt.Sprintf("%s Configuration", cfg.name),
 			Data:        fmt.Sprintf("# Content from %s", filePath),
@@ -161,7 +171,10 @@ func (d *DeploymentHelper) LoadBaseConfigurations(configPath string) error {
 
 // CreateEnvironmentHierarchy sets up dev → staging → prod
 func (d *DeploymentHelper) CreateEnvironmentHierarchy() error {
-	baseSpaceID := d.getSpaceID(fmt.Sprintf("%s-base", d.ProjectName))
+	baseSpaceID, err := d.getSpaceID(fmt.Sprintf("%s-base", d.ProjectName))
+	if err != nil {
+		return fmt.Errorf("get base space: %w", err)
+	}
 
 	// Create dev environment
 	devSpaceID, err := d.createEnvironment("dev", &baseSpaceID)
@@ -187,11 +200,14 @@ func (d *DeploymentHelper) CreateEnvironmentHierarchy() error {
 // CreateVariant creates a variant by editing an existing unit directly
 // This avoids unnecessary cloning - just edit the unit where you need the variant
 func (d *DeploymentHelper) CreateVariant(unitName, spaceName string, changes map[string]interface{}, description string) error {
-	spaceID := d.getSpaceID(spaceName)
+	spaceID, err := d.getSpaceID(spaceName)
+	if err != nil {
+		return fmt.Errorf("get space: %w", err)
+	}
 
 	// Edit the unit directly with the variant changes
 	// ConfigHub will create a new revision automatically
-	err := d.Cub.BulkPatchUnits(BulkPatchParams{
+	err = d.Cub.BulkPatchUnits(BulkPatchParams{
 		SpaceID: spaceID,
 		Where:   fmt.Sprintf("Slug = '%s'", unitName),
 		Patch:   changes,
@@ -206,7 +222,10 @@ func (d *DeploymentHelper) CreateVariant(unitName, spaceName string, changes map
 
 // ApplyToEnvironment applies all units to a specific environment
 func (d *DeploymentHelper) ApplyToEnvironment(environment string) error {
-	spaceID := d.getSpaceID(fmt.Sprintf("%s-%s", d.ProjectName, environment))
+	spaceID, err := d.getSpaceID(fmt.Sprintf("%s-%s", d.ProjectName, environment))
+	if err != nil {
+		return fmt.Errorf("get environment space: %w", err)
+	}
 
 	// Apply units in correct order
 	units := []string{
@@ -235,7 +254,7 @@ func (d *DeploymentHelper) ApplyToEnvironment(environment string) error {
 	}
 
 	// Alternative: Use bulk apply
-	err := d.Cub.BulkApplyUnits(BulkApplyParams{
+	err = d.Cub.BulkApplyUnits(BulkApplyParams{
 		SpaceID: spaceID,
 		Where:   fmt.Sprintf("Labels.app = '%s'", d.AppName),
 		DryRun:  false,
@@ -249,11 +268,18 @@ func (d *DeploymentHelper) ApplyToEnvironment(environment string) error {
 
 // PromoteEnvironment promotes changes from one environment to another
 func (d *DeploymentHelper) PromoteEnvironment(from, to string) error {
-	fromSpaceID := d.getSpaceID(fmt.Sprintf("%s-%s", d.ProjectName, from))
-	toSpaceID := d.getSpaceID(fmt.Sprintf("%s-%s", d.ProjectName, to))
+	fromSpaceID, err := d.getSpaceID(fmt.Sprintf("%s-%s", d.ProjectName, from))
+	if err != nil {
+		return fmt.Errorf("get from space: %w", err)
+	}
+
+	toSpaceID, err := d.getSpaceID(fmt.Sprintf("%s-%s", d.ProjectName, to))
+	if err != nil {
+		return fmt.Errorf("get to space: %w", err)
+	}
 
 	// Use push-upgrade pattern
-	err := d.Cub.BulkPatchUnits(BulkPatchParams{
+	err = d.Cub.BulkPatchUnits(BulkPatchParams{
 		SpaceID: toSpaceID,
 		Where:   fmt.Sprintf("UpstreamSpaceID = '%s'", fromSpaceID),
 		Patch:   map[string]interface{}{},
@@ -320,10 +346,42 @@ func (d *DeploymentHelper) cloneUnitsFromUpstream(fromSpaceID, toSpaceID uuid.UU
 	return nil
 }
 
-func (d *DeploymentHelper) getSpaceID(spaceName string) uuid.UUID {
-	// In real implementation, would fetch from ConfigHub
-	// For now, generate deterministic UUID from name
-	return uuid.NewSHA1(uuid.NameSpaceDNS, []byte(spaceName))
+// getSpaceID resolves space name to UUID by querying ConfigHub
+func (d *DeploymentHelper) getSpaceID(spaceName string) (uuid.UUID, error) {
+	spaces, err := d.Cub.ListSpaces()
+	if err != nil {
+		return uuid.UUID{}, fmt.Errorf("list spaces: %w", err)
+	}
+
+	// Filter by slug
+	for _, space := range spaces {
+		if space.Slug == spaceName {
+			return space.SpaceID, nil
+		}
+	}
+
+	return uuid.UUID{}, fmt.Errorf("space not found: %s", spaceName)
+}
+
+// getSpaceIDOrCreate resolves space name to UUID, creating it if it doesn't exist
+func (d *DeploymentHelper) getSpaceIDOrCreate(spaceName, displayName string, labels map[string]string) (uuid.UUID, error) {
+	// Try to get existing space first
+	spaceID, err := d.getSpaceID(spaceName)
+	if err == nil {
+		return spaceID, nil
+	}
+
+	// Space doesn't exist, create it
+	space, err := d.Cub.CreateSpace(CreateSpaceRequest{
+		Slug:        spaceName,
+		DisplayName: displayName,
+		Labels:      labels,
+	})
+	if err != nil {
+		return uuid.UUID{}, fmt.Errorf("create space %s: %w", spaceName, err)
+	}
+
+	return space.SpaceID, nil
 }
 
 func mergeLabels(base, additional map[string]string) map[string]string {
