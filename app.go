@@ -18,7 +18,7 @@ type DevOpsApp struct {
     RunInterval   time.Duration
     K8s          *K8sClients
     Claude       *ClaudeClient
-    Cub          *CubClient
+    Cub          *ConfigHubClient
     Logger       *log.Logger
     stopChan     chan struct{}
     healthServer *HealthServer
@@ -64,15 +64,15 @@ func NewDevOpsApp(config DevOpsAppConfig) (*DevOpsApp, error) {
     }
 
     // Initialize ConfigHub client if token provided
-    var cub *CubClient
+    var cub *ConfigHubClient
     if config.CubToken != "" {
-        cub = NewCubClient(config.CubBaseURL, config.CubToken)
+        cub = NewConfigHubClient(config.CubBaseURL, config.CubToken)
     } else if token := os.Getenv("CUB_TOKEN"); token != "" {
         baseURL := config.CubBaseURL
         if baseURL == "" {
             baseURL = os.Getenv("CUB_API_URL")
         }
-        cub = NewCubClient(baseURL, token)
+        cub = NewConfigHubClient(baseURL, token)
     }
 
     app := &DevOpsApp{
