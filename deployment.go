@@ -184,6 +184,26 @@ func (d *DeploymentHelper) CreateEnvironmentHierarchy() error {
 	return nil
 }
 
+// CreateVariant creates a variant by editing an existing unit directly
+// This avoids unnecessary cloning - just edit the unit where you need the variant
+func (d *DeploymentHelper) CreateVariant(unitName, spaceName string, changes map[string]interface{}, description string) error {
+	spaceID := d.getSpaceID(spaceName)
+
+	// Edit the unit directly with the variant changes
+	// ConfigHub will create a new revision automatically
+	err := d.Cub.BulkPatchUnits(BulkPatchParams{
+		SpaceID: spaceID,
+		Where:   fmt.Sprintf("Slug = '%s'", unitName),
+		Patch:   changes,
+		Upgrade: false, // Don't push to downstream, this is a local variant
+	})
+	if err != nil {
+		return fmt.Errorf("create variant for unit %s: %w", unitName, err)
+	}
+
+	return nil
+}
+
 // ApplyToEnvironment applies all units to a specific environment
 func (d *DeploymentHelper) ApplyToEnvironment(environment string) error {
 	spaceID := d.getSpaceID(fmt.Sprintf("%s-%s", d.ProjectName, environment))
@@ -322,6 +342,11 @@ func mergeLabels(base, additional map[string]string) map[string]string {
 //   helper, err := NewDeploymentHelper(cub, "drift-detector")
 //   if err != nil { ... }
 //   err = helper.QuickDeploy("confighub/base")
+//
+//   // Create variants by editing directly (no cloning needed)
+//   helper.CreateVariant("drift-detector-deployment", "prefix-drift-detector-prod",
+//     map[string]interface{}{"spec": map[string]interface{}{"replicas": 3}},
+//     "Production scaling")
 func (d *DeploymentHelper) QuickDeploy(configPath string) error {
 	// 1. Setup base spaces
 	if err := d.SetupBaseSpace(); err != nil {
