@@ -27,7 +27,11 @@ func NewClaudeClient(apiKey string) *ClaudeClient {
     logger := log.New(os.Stdout, "[Claude] ", log.LstdFlags)
 
     // Enable debug logging if environment variable is set
-    enableDebug := os.Getenv("CLAUDE_DEBUG_LOG") == "true"
+    enableDebug := os.Getenv("CLAUDE_DEBUG_LOGGING") == "true" || os.Getenv("CLAUDE_DEBUG_LOG") == "true"
+
+    if enableDebug {
+        logger.Println("🔍 Debug logging enabled - all prompts and responses will be logged")
+    }
 
     return &ClaudeClient{
         apiKey:         apiKey,
