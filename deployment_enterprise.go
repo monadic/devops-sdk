@@ -55,13 +55,13 @@ func (e *EnterpriseModeDeployer) DeployUnit(unitID uuid.UUID) error {
 	e.app.Logger.Printf("🏢 [Enterprise Mode] Exporting unit %s to Git repository", unitID)
 
 	// Get unit from ConfigHub
-	unit, err := e.app.Cub.GetUnit(unitID)
+	unit, err := e.app.Cub.GetUnit(e.spaceID, unitID)
 	if err != nil {
 		return fmt.Errorf("get unit: %w", err)
 	}
 
 	// Export to Git
-	if err := e.exportUnitToGit(unit); err != nil {
+	if err := e.exportUnitToGit(*unit); err != nil {
 		return fmt.Errorf("export to git: %w", err)
 	}
 
@@ -84,7 +84,9 @@ func (e *EnterpriseModeDeployer) DeploySpace() error {
 	}
 
 	// List all units in space
-	units, err := e.app.Cub.ListUnits(e.spaceID)
+	units, err := e.app.Cub.ListUnits(ListUnitsParams{
+		SpaceID: e.spaceID,
+	})
 	if err != nil {
 		return fmt.Errorf("list units: %w", err)
 	}
@@ -92,7 +94,7 @@ func (e *EnterpriseModeDeployer) DeploySpace() error {
 	// Export each unit to Git
 	exported := 0
 	for _, unit := range units {
-		if err := e.exportUnitToGit(unit); err != nil {
+		if err := e.exportUnitToGit(*unit); err != nil {
 			e.app.Logger.Printf("⚠️  Failed to export %s: %v", unit.Slug, err)
 		} else {
 			exported++
@@ -115,10 +117,10 @@ func (e *EnterpriseModeDeployer) DeploySpace() error {
 
 // exportUnitToGit exports a ConfigHub unit as a YAML file in the Git repository
 func (e *EnterpriseModeDeployer) exportUnitToGit(unit Unit) error {
-	// Parse manifest data
-	manifest, ok := unit.ManifestData.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("invalid manifest data type")
+	// Parse manifest from Data field
+	var manifest map[string]interface{}
+	if err := yaml.Unmarshal([]byte(unit.Data), &manifest); err != nil {
+		return fmt.Errorf("parse manifest: %w", err)
 	}
 
 	// Determine file path based on resource type
@@ -159,8 +161,8 @@ func (e *EnterpriseModeDeployer) exportUnitToGit(unit Unit) error {
 	// Add tracking annotations
 	annotations["confighub.io/unit-id"] = unit.UnitID.String()
 	annotations["confighub.io/space-id"] = unit.SpaceID.String()
-	annotations["confighub.io/revision"] = fmt.Sprintf("%d", unit.Revision)
-	annotations["confighub.io/last-modified"] = unit.ModifiedAt.Format(time.RFC3339)
+	annotations["confighub.io/revision"] = fmt.Sprintf("%d", unit.Version)
+	annotations["confighub.io/last-modified"] = unit.UpdatedAt.Format(time.RFC3339)
 	annotations["confighub.io/managed-by"] = "confighub-enterprise-deployer"
 
 	// Convert to YAML

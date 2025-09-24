@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -34,15 +35,15 @@ func (d *DevModeDeployer) DeployUnit(unitID uuid.UUID) error {
 	d.app.Logger.Printf("🚀 [Dev Mode] Deploying unit %s directly to Kubernetes", unitID)
 
 	// Get unit from ConfigHub
-	unit, err := d.app.Cub.GetUnit(unitID)
+	unit, err := d.app.Cub.GetUnit(d.spaceID, unitID)
 	if err != nil {
 		return fmt.Errorf("get unit: %w", err)
 	}
 
-	// Parse and apply manifest
-	manifest, ok := unit.ManifestData.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("invalid manifest data type")
+	// Parse manifest from Data field
+	var manifest map[string]interface{}
+	if err := yaml.Unmarshal([]byte(unit.Data), &manifest); err != nil {
+		return fmt.Errorf("parse manifest: %w", err)
 	}
 
 	return d.applyManifest(manifest, unit.Slug)
@@ -54,7 +55,9 @@ func (d *DevModeDeployer) DeploySpace() error {
 	start := time.Now()
 
 	// List all units in space
-	units, err := d.app.Cub.ListUnits(d.spaceID)
+	units, err := d.app.Cub.ListUnits(ListUnitsParams{
+		SpaceID: d.spaceID,
+	})
 	if err != nil {
 		return fmt.Errorf("list units: %w", err)
 	}
@@ -80,10 +83,19 @@ func (d *DevModeDeployer) DeploySpace() error {
 func (d *DevModeDeployer) DeployWithFilter(filterID uuid.UUID) error {
 	d.app.Logger.Printf("🚀 [Dev Mode] Deploying units matching filter %s", filterID)
 
-	// Get filtered units
-	units, err := d.app.Cub.GetFilteredUnits(filterID, d.spaceID)
+	// Get filter and apply it
+	filter, err := d.app.Cub.GetFilter(d.spaceID, filterID)
 	if err != nil {
-		return fmt.Errorf("get filtered units: %w", err)
+		return fmt.Errorf("get filter: %w", err)
+	}
+
+	// List units using filter's WHERE clause
+	units, err := d.app.Cub.ListUnits(ListUnitsParams{
+		SpaceID: d.spaceID,
+		Where:   filter.Where,
+	})
+	if err != nil {
+		return fmt.Errorf("list filtered units: %w", err)
 	}
 
 	deployed := 0
@@ -107,7 +119,7 @@ func (d *DevModeDeployer) WatchAndSync(ctx context.Context, interval time.Durati
 	defer ticker.Stop()
 
 	// Track last revision for change detection
-	lastRevisions := make(map[uuid.UUID]int)
+	lastRevisions := make(map[uuid.UUID]int64)
 
 	for {
 		select {
@@ -122,8 +134,10 @@ func (d *DevModeDeployer) WatchAndSync(ctx context.Context, interval time.Durati
 }
 
 // syncChanges syncs any changed units to Kubernetes
-func (d *DevModeDeployer) syncChanges(lastRevisions map[uuid.UUID]int) error {
-	units, err := d.app.Cub.ListUnits(d.spaceID)
+func (d *DevModeDeployer) syncChanges(lastRevisions map[uuid.UUID]int64) error {
+	units, err := d.app.Cub.ListUnits(ListUnitsParams{
+		SpaceID: d.spaceID,
+	})
 	if err != nil {
 		return fmt.Errorf("list units: %w", err)
 	}
@@ -132,10 +146,10 @@ func (d *DevModeDeployer) syncChanges(lastRevisions map[uuid.UUID]int) error {
 	for _, unit := range units {
 		// Check if unit has changed
 		lastRev, exists := lastRevisions[unit.UnitID]
-		currentRev := unit.Revision // Assuming Unit has a Revision field
+		currentRev := unit.Version // Use Version field for revision tracking
 
 		if !exists || currentRev > lastRev {
-			d.app.Logger.Printf("🔄 [Dev Mode] Detected change in %s (rev %d -> %d)",
+			d.app.Logger.Printf("🔄 [Dev Mode] Detected change in %s (version %d -> %d)",
 				unit.Slug, lastRev, currentRev)
 
 			if err := d.DeployUnit(unit.UnitID); err != nil {
@@ -271,16 +285,19 @@ func (d *DevModeDeployer) Rollback(unitID uuid.UUID, targetRevision int) error {
 func (d *DevModeDeployer) ValidateDeployment() (bool, []string) {
 	d.app.Logger.Println("🔍 [Dev Mode] Validating Kubernetes matches ConfigHub...")
 
-	units, err := d.app.Cub.ListUnits(d.spaceID)
+	units, err := d.app.Cub.ListUnits(ListUnitsParams{
+		SpaceID: d.spaceID,
+	})
 	if err != nil {
 		return false, []string{fmt.Sprintf("Failed to list units: %v", err)}
 	}
 
 	var issues []string
 	for _, unit := range units {
-		manifest, ok := unit.ManifestData.(map[string]interface{})
-		if !ok {
-			issues = append(issues, fmt.Sprintf("%s: invalid manifest data", unit.Slug))
+		// Parse manifest from Data field
+		var manifest map[string]interface{}
+		if err := yaml.Unmarshal([]byte(unit.Data), &manifest); err != nil {
+			issues = append(issues, fmt.Sprintf("%s: failed to parse manifest: %v", unit.Slug, err))
 			continue
 		}
 
