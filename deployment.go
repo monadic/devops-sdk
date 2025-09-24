@@ -397,14 +397,15 @@ func mergeLabels(base, additional map[string]string) map[string]string {
 
 // QuickDeploy performs a complete deployment setup
 // Example usage:
-//   helper, err := NewDeploymentHelper(cub, "drift-detector")
-//   if err != nil { ... }
-//   err = helper.QuickDeploy("confighub/base")
 //
-//   // Create variants by editing directly (no cloning needed)
-//   helper.CreateVariant("drift-detector-deployment", "prefix-drift-detector-prod",
-//     map[string]interface{}{"spec": map[string]interface{}{"replicas": 3}},
-//     "Production scaling")
+//	helper, err := NewDeploymentHelper(cub, "drift-detector")
+//	if err != nil { ... }
+//	err = helper.QuickDeploy("confighub/base")
+//
+//	// Create variants by editing directly (no cloning needed)
+//	helper.CreateVariant("drift-detector-deployment", "prefix-drift-detector-prod",
+//	  map[string]interface{}{"spec": map[string]interface{}{"replicas": 3}},
+//	  "Production scaling")
 func (d *DeploymentHelper) QuickDeploy(configPath string) error {
 	// 1. Setup base spaces
 	if err := d.SetupBaseSpace(); err != nil {

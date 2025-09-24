@@ -30,23 +30,23 @@ type Space struct {
 
 // Unit represents a ConfigHub configuration unit
 type Unit struct {
-	UnitID          uuid.UUID         `json:"UnitID,omitempty"`
-	SpaceID         uuid.UUID         `json:"SpaceID,omitempty"`
-	OrganizationID  uuid.UUID         `json:"OrganizationID,omitempty"`
-	Slug            string            `json:"Slug"`
-	DisplayName     string            `json:"DisplayName,omitempty"`
-	Data            string            `json:"Data,omitempty"`
-	Labels          map[string]string `json:"Labels,omitempty"`
-	Annotations     map[string]string `json:"Annotations,omitempty"`
-	UpstreamUnitID  *uuid.UUID        `json:"UpstreamUnitID,omitempty"` // For upstream/downstream
-	SetIDs          []uuid.UUID       `json:"SetIDs,omitempty"`          // Sets this unit belongs to
-	TargetID        *uuid.UUID        `json:"TargetID,omitempty"`
-	BridgeWorkerID  *uuid.UUID        `json:"BridgeWorkerID,omitempty"`
-	ApplyGates      map[string]bool   `json:"ApplyGates,omitempty"`
-	CreatedAt       time.Time         `json:"CreatedAt,omitempty"`
-	UpdatedAt       time.Time         `json:"UpdatedAt,omitempty"`
-	Version         int64             `json:"Version,omitempty"`
-	EntityType      string            `json:"EntityType,omitempty"`
+	UnitID         uuid.UUID         `json:"UnitID,omitempty"`
+	SpaceID        uuid.UUID         `json:"SpaceID,omitempty"`
+	OrganizationID uuid.UUID         `json:"OrganizationID,omitempty"`
+	Slug           string            `json:"Slug"`
+	DisplayName    string            `json:"DisplayName,omitempty"`
+	Data           string            `json:"Data,omitempty"`
+	Labels         map[string]string `json:"Labels,omitempty"`
+	Annotations    map[string]string `json:"Annotations,omitempty"`
+	UpstreamUnitID *uuid.UUID        `json:"UpstreamUnitID,omitempty"` // For upstream/downstream
+	SetIDs         []uuid.UUID       `json:"SetIDs,omitempty"`         // Sets this unit belongs to
+	TargetID       *uuid.UUID        `json:"TargetID,omitempty"`
+	BridgeWorkerID *uuid.UUID        `json:"BridgeWorkerID,omitempty"`
+	ApplyGates     map[string]bool   `json:"ApplyGates,omitempty"`
+	CreatedAt      time.Time         `json:"CreatedAt,omitempty"`
+	UpdatedAt      time.Time         `json:"UpdatedAt,omitempty"`
+	Version        int64             `json:"Version,omitempty"`
+	EntityType     string            `json:"EntityType,omitempty"`
 }
 
 // Set represents a group of related Units (REAL ConfigHub feature)
@@ -71,9 +71,9 @@ type Filter struct {
 	OrganizationID uuid.UUID         `json:"OrganizationID,omitempty"`
 	Slug           string            `json:"Slug"`
 	DisplayName    string            `json:"DisplayName,omitempty"`
-	From           string            `json:"From"`           // Entity type to filter (e.g., "Unit")
+	From           string            `json:"From"` // Entity type to filter (e.g., "Unit")
 	FromSpaceID    *uuid.UUID        `json:"FromSpaceID,omitempty"`
-	Where          string            `json:"Where"`          // WHERE clause
+	Where          string            `json:"Where"` // WHERE clause
 	Select         []string          `json:"Select,omitempty"`
 	Labels         map[string]string `json:"Labels,omitempty"`
 	Annotations    map[string]string `json:"Annotations,omitempty"`
@@ -162,10 +162,10 @@ type BulkApplyParams struct {
 }
 
 type BulkPatchParams struct {
-	SpaceID uuid.UUID         `json:"SpaceID"`
-	Where   string            `json:"Where"`
+	SpaceID uuid.UUID              `json:"SpaceID"`
+	Where   string                 `json:"Where"`
 	Patch   map[string]interface{} `json:"Patch"`
-	Upgrade bool              `json:"Upgrade,omitempty"` // For push-upgrade pattern
+	Upgrade bool                   `json:"Upgrade,omitempty"` // For push-upgrade pattern
 }
 
 // ConfigHubClient provides interface to real ConfigHub API
@@ -215,6 +215,11 @@ func (c *ConfigHubClient) GetSpace(spaceID uuid.UUID) (*Space, error) {
 func (c *ConfigHubClient) ListSpaces() ([]*Space, error) {
 	var spaces []*Space
 	return spaces, c.doRequestList("GET", "/space", nil, &spaces)
+}
+
+func (c *ConfigHubClient) DeleteSpace(spaceID uuid.UUID) error {
+	_, err := c.doRequest("DELETE", fmt.Sprintf("/space/%s", spaceID), nil, nil)
+	return err
 }
 
 // Unit operations
@@ -482,7 +487,6 @@ func (c *ConfigHubClient) GetSpaceBySlug(slug string) (*Space, error) {
 	return nil, fmt.Errorf("space not found: %s", slug)
 }
 
-
 // CreateSpaceWithUniquePrefix creates a space with a unique prefix + suffix
 func (c *ConfigHubClient) CreateSpaceWithUniquePrefix(suffix string, displayName string, labels map[string]string) (*Space, string, error) {
 	prefix, err := c.GetNewSpacePrefix()
@@ -501,6 +505,33 @@ func (c *ConfigHubClient) CreateSpaceWithUniquePrefix(suffix string, displayName
 	}
 
 	return space, slug, nil
+}
+
+// EnsureSpaceRecreated implements the delete-then-create pattern for spaces.
+// If a space with the given slug exists, it deletes it completely first.
+// Then creates a fresh space with the same slug.
+// This ensures we always start with a clean slate and avoid stale configurations.
+func (c *ConfigHubClient) EnsureSpaceRecreated(req CreateSpaceRequest) (*Space, error) {
+	// First, try to find existing space by slug
+	existingSpace, err := c.GetSpaceBySlug(req.Slug)
+	if err == nil && existingSpace != nil {
+		// Space exists, delete it first
+		fmt.Printf("Deleting existing space: %s\n", req.Slug)
+		if err := c.DeleteSpace(existingSpace.SpaceID); err != nil {
+			return nil, fmt.Errorf("delete existing space %s: %w", req.Slug, err)
+		}
+		fmt.Printf("Successfully deleted space: %s\n", req.Slug)
+	}
+
+	// Now create the space (whether it's new or we just deleted the old one)
+	fmt.Printf("Creating space: %s\n", req.Slug)
+	space, err := c.CreateSpace(req)
+	if err != nil {
+		return nil, fmt.Errorf("create space %s: %w", req.Slug, err)
+	}
+
+	fmt.Printf("Successfully created space: %s\n", req.Slug)
+	return space, nil
 }
 
 // CloneUnitWithUpstream creates a unit in the target space with an upstream relationship

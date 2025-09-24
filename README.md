@@ -1,42 +1,105 @@
 # DevOps SDK
 
-A reusable Go SDK for building DevOps applications that integrate with Kubernetes, ConfigHub, and Claude AI.
+A comprehensive Go SDK for building DevOps automation applications using ConfigHub as the configuration backend. This SDK provides reusable modules for cost analysis, waste detection, resource optimization, and deployment strategies.
 
-## Features
+## Overview
 
-### Core Components
+The DevOps SDK enables building persistent, event-driven DevOps applications that are superior to ephemeral workflow-based solutions. Key advantages:
 
-1. **Claude AI Client** (`claude.go`)
-   - Simple API for sending prompts to Claude
-   - JSON analysis with structured responses
-   - Automatic response parsing and error handling
-   - **Comprehensive timestamped logging** with request/response tracking
+- **Persistent Apps**: Run continuously with Kubernetes informers, not just when triggered
+- **Event-Driven**: React immediately to changes, not on schedules
+- **Stateful**: ConfigHub tracks all state and history
+- **AI-Powered**: Integrated Claude AI for intelligent decisions
+- **Bulk Operations**: Sets and Filters for cross-environment operations
 
-2. **ConfigHub Client** (`confighub.go`)
-   - Full CRUD operations for units and spaces
-   - Type-safe API interactions with real ConfigHub APIs
-   - Token-based authentication
-   - **High-level convenience helpers** for common patterns
-   - **Real space name resolution** (no more mock UUIDs)
+## Core Modules
 
-3. **Kubernetes Utilities** (`kubernetes.go`)
-   - Multi-client initialization (standard, dynamic, metrics)
-   - Config detection (kubeconfig, in-cluster)
-   - Resource helper for nested field operations
-   - Namespace detection
+### 1. Cost Analysis Module (`cost.go`) - 632 lines
+Analyzes resource costs across ConfigHub spaces and Kubernetes deployments.
 
-4. **DevOps App Framework** (`app.go`)
-   - Base structure for continuous DevOps applications
-   - Built-in health checks and metrics
-   - Signal handling and graceful shutdown
-   - Environment variable helpers
-   - Retry logic with exponential backoff
-   - **Event-driven mode** with `RunWithInformers()` for Kubernetes events
+**Features:**
+- Multi-cloud pricing models (AWS, GCP, Azure)
+- Kubernetes resource cost estimation
+- ConfigHub unit cost analysis
+- Hierarchical space analysis
+- Cost breakdown by resource type
+- Support for all Kubernetes resource units (Ki, Mi, Gi, Ti, Pi)
 
-5. **Health Server** (`health.go`)
-   - Health and readiness endpoints
-   - Metrics endpoint
-   - Status tracking
+### 2. Waste Detection Module (`waste.go`) - 810 lines
+Identifies resource waste by comparing allocated vs actual usage.
+
+**Features:**
+- CPU waste detection with safety checks
+- Memory waste analysis
+- Storage waste identification
+- Idle replica detection
+- Waste categorization and prioritization
+- Negative waste ratio protection
+
+### 3. Optimization Engine (`optimizer.go`) - 1,010 lines
+Generates optimized configurations based on waste analysis.
+
+**Features:**
+- Multi-container resource optimization
+- Proportional resource distribution
+- Safety margin calculations (20% buffer)
+- Risk assessment (LOW/MEDIUM/HIGH)
+- Requests/limits ratios (CPU 150%, Memory 120%)
+- Deep manifest copying with type safety
+
+### 4. Dev Mode Deployment (`deployment_dev.go`)
+Direct ConfigHub → Kubernetes deployment for fast development cycles.
+
+**Features:**
+- Direct manifest application
+- No Git intermediary
+- Watch and sync capabilities
+- Instant rollback
+- Validation tools
+
+### 5. Enterprise Mode Deployment (`deployment_enterprise.go`)
+ConfigHub → Git → Flux/Argo → Kubernetes for production compliance.
+
+**Features:**
+- Git repository integration
+- Flux and Argo CD support
+- Full audit trail
+- GitOps configuration generation
+- Automated sync triggering
+
+## Base Components
+
+### Claude AI Client (`claude.go`)
+- Simple API for sending prompts to Claude
+- JSON analysis with structured responses
+- Automatic response parsing and error handling
+- Comprehensive timestamped logging with request/response tracking
+
+### ConfigHub Client (`confighub.go`)
+- Full CRUD operations for units and spaces
+- Type-safe API interactions with real ConfigHub APIs
+- Token-based authentication
+- High-level convenience helpers for common patterns
+- Real space name resolution (no more mock UUIDs)
+
+### Kubernetes Utilities (`kubernetes.go`)
+- Multi-client initialization (standard, dynamic, metrics)
+- Config detection (kubeconfig, in-cluster)
+- Resource helper for nested field operations
+- Namespace detection
+
+### DevOps App Framework (`app.go`)
+- Base structure for continuous DevOps applications
+- Built-in health checks and metrics
+- Signal handling and graceful shutdown
+- Environment variable helpers
+- Retry logic with exponential backoff
+- Event-driven mode with `RunWithInformers()` for Kubernetes events
+
+### Health Server (`health.go`)
+- Health and readiness endpoints
+- Metrics endpoint
+- Status tracking
 
 ## Usage
 
