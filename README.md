@@ -193,6 +193,14 @@ ConfigHub → Git → Flux/Argo → Kubernetes for production compliance.
 - Validate Helm values with ConfigHub functions
 - Generate upgrade commands for corrections
 
+### Package System (`package.go`)
+- Export ConfigHub resources to distributable packages
+- Load packages from local directories or remote URLs
+- Clone entire environments with one command
+- Backup and restore spaces with timestamps
+- Publish packages to Git repositories
+- Support for versioned packages
+
 ## Usage
 
 ### Creating a New DevOps App
@@ -381,6 +389,44 @@ if hasUpdate {
 // Generate correction command for drift
 cmd := helm.GenerateUpgradeCommand(release, newVersion)
 fmt.Printf("To fix drift, run: %s\n", cmd)
+```
+
+### Package Management (Experimental)
+```go
+// Note: Requires CONFIGHUB_EXPERIMENTAL=1 environment variable
+pkg := sdk.NewPackageHelper(cub)
+
+// Export app configuration to package
+err := pkg.CreatePackage("./my-app-package", sdk.PackageOptions{
+    SpaceID: spaceID,
+    Where:   "Labels.app='drift-detector'",
+})
+
+// Load package from local directory
+err = pkg.LoadPackage("./my-app-package", "staging")
+
+// Load from GitHub
+err = pkg.LoadPackageFromGitHub("monadic", "packages", "drift-detector", "prod")
+
+// Clone entire environment
+err = pkg.CloneEnvironment(prodSpaceID, "staging-clone")
+
+// Backup space with timestamp
+backupPath, err := pkg.BackupSpace(spaceID, "./backups")
+fmt.Printf("Backup created at: %s\n", backupPath)
+
+// Restore from backup
+err = pkg.RestoreSpace(backupPath, "restored")
+
+// Create versioned package
+err = pkg.CreateVersionedPackage("./release", "v1.2.0", sdk.PackageOptions{
+    SpaceID: spaceID,
+})
+
+// Publish package to Git
+err = pkg.PublishPackage("./my-app-package",
+    "https://github.com/myorg/packages.git",
+    "Release v1.2.0")
 ```
 
 #### Kubernetes Helpers
