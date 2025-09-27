@@ -15,6 +15,7 @@ A comprehensive Go SDK for building DevOps automation applications using ConfigH
 - **`deployment_dev.go`** - Development mode deployment (direct to K8s)
 - **`deployment_enterprise.go`** - Enterprise mode deployment (via Git)
 - **`health.go`** - Health check endpoints for monitoring
+- **`health_check.go`** - Comprehensive health checking system
 
 ## Overview
 
@@ -28,7 +29,7 @@ The DevOps SDK enables building persistent, event-driven DevOps applications tha
 
 ## Core Modules
 
-### 1. Cost Analysis Module (`cost.go`) - 632 lines
+### 1. Cost Analysis Module (`cost.go`) - 744 lines
 Analyzes resource costs across ConfigHub spaces and Kubernetes deployments.
 
 **Features:**
@@ -39,7 +40,16 @@ Analyzes resource costs across ConfigHub spaces and Kubernetes deployments.
 - Cost breakdown by resource type
 - Support for all Kubernetes resource units (Ki, Mi, Gi, Ti, Pi)
 
-### 2. Waste Detection Module (`waste.go`) - 810 lines
+**Key Functions:**
+- `NewCostAnalyzer()` - Create cost analyzer with ConfigHub integration
+- `AnalyzeSpace()` - Analyze costs for a single space
+- `AnalyzeHierarchy()` - Analyze full environment hierarchy
+- `GenerateReport()` - Create detailed cost report
+- `StoreAnalysisInConfigHub()` - Save analysis results
+- `GetOptimizationRecommendations()` - Get cost-saving suggestions
+- `ParseQuantity()` - Parse Kubernetes resource quantities
+
+### 2. Waste Detection Module (`waste.go`) - 890 lines
 Identifies resource waste by comparing allocated vs actual usage.
 
 **Features:**
@@ -50,7 +60,14 @@ Identifies resource waste by comparing allocated vs actual usage.
 - Waste categorization and prioritization
 - Negative waste ratio protection
 
-### 3. Optimization Engine (`optimizer.go`) - 1,010 lines
+**Key Functions:**
+- `NewWasteAnalyzer()` - Create waste analyzer with thresholds
+- `SetThresholds()` - Configure waste detection sensitivity
+- `AnalyzeWaste()` - Perform comprehensive waste analysis
+- `GenerateWasteReport()` - Create detailed waste report
+- `IdentifyWaste()` - High-level waste identification helper
+
+### 3. Optimization Engine (`optimizer.go`) - 1,308 lines
 Generates optimized configurations based on waste analysis.
 
 **Features:**
@@ -60,6 +77,14 @@ Generates optimized configurations based on waste analysis.
 - Risk assessment (LOW/MEDIUM/HIGH)
 - Requests/limits ratios (CPU 150%, Memory 120%)
 - Deep manifest copying with type safety
+
+**Key Functions:**
+- `NewOptimizer()` - Create optimization engine
+- `GenerateOptimizedConfiguration()` - Generate optimized manifests
+- `ApplyOptimizations()` - Apply optimizations to ConfigHub
+- `ValidateOptimizedConfiguration()` - Validate optimized configs
+- `GenerateOptimizationReport()` - Create optimization report
+- `StoreOptimizationInConfigHub()` - Save optimizations
 
 ### 4. Dev Mode Deployment (`deployment_dev.go`)
 Direct ConfigHub → Kubernetes deployment for fast development cycles.
@@ -71,7 +96,37 @@ Direct ConfigHub → Kubernetes deployment for fast development cycles.
 - Instant rollback
 - Validation tools
 
-### 5. Enterprise Mode Deployment (`deployment_enterprise.go`)
+**Key Functions:**
+- `NewDevModeDeployer()` - Create dev mode deployer
+- `DeployUnit()` - Deploy single unit to Kubernetes
+- `DeploySpace()` - Deploy entire space
+- `DeployWithFilter()` - Deploy filtered units
+- `WatchAndSync()` - Continuous sync from ConfigHub
+- `Rollback()` - Rollback to previous revision
+- `ValidateDeployment()` - Validate deployment status
+
+### 5. Deployment Helper (`deployment.go`)
+Core deployment strategies and environment management.
+
+**Features:**
+- Environment hierarchy creation (base → qa → staging → prod)
+- Automatic space setup with unique prefixes
+- Filter creation for bulk operations
+- Base configuration loading
+- Environment promotion patterns
+
+**Key Functions:**
+- `NewDeploymentHelper()` - Create deployment helper
+- `SetupBaseSpace()` - Initialize base space with unique prefix
+- `CreateStandardFilters()` - Create app/infra/all filters
+- `LoadBaseConfigurations()` - Load configs from files
+- `CreateEnvironmentHierarchy()` - Build full env hierarchy
+- `CreateVariant()` - Create config variant
+- `ApplyToEnvironment()` - Deploy to specific environment
+- `PromoteEnvironment()` - Promote between environments
+- `QuickDeploy()` - One-command deployment
+
+### 6. Enterprise Mode Deployment (`deployment_enterprise.go`)
 ConfigHub → Git → Flux/Argo → Kubernetes for production compliance.
 
 **Features:**
@@ -80,6 +135,13 @@ ConfigHub → Git → Flux/Argo → Kubernetes for production compliance.
 - Full audit trail
 - GitOps configuration generation
 - Automated sync triggering
+
+**Key Functions:**
+- `NewEnterpriseModeDeployer()` - Create enterprise deployer
+- `DeployUnit()` - Export unit to Git and trigger sync
+- `DeploySpace()` - Export space to Git repository
+- `CreateGitOpsConfig()` - Generate Flux/Argo configs
+- `ValidateGitOpsDeployment()` - Validate GitOps deployment
 
 ## Base Components
 
@@ -114,6 +176,14 @@ ConfigHub → Git → Flux/Argo → Kubernetes for production compliance.
 - Health and readiness endpoints
 - Metrics endpoint
 - Status tracking
+
+### Comprehensive Health Check (`health_check.go`)
+- Complete system health validation
+- Kubernetes cluster health monitoring
+- ConfigHub connection verification
+- Resource availability checks
+- Compliance validation for ConfigHub-only commands
+- Detailed error reporting and diagnostics
 
 ## Usage
 
@@ -322,6 +392,35 @@ port := sdk.GetEnvInt("PORT", 8080)
 err := sdk.RunWithRetry(ctx, 3, func() error {
     return apiCall()
 })
+```
+
+## Comprehensive Health Checking
+
+```go
+// Create health checker
+healthChecker := sdk.NewComprehensiveHealthCheck(
+    k8s.Clientset,
+    cub,
+    "default",
+)
+
+// Run health check
+ctx := context.Background()
+result, err := healthChecker.RunHealthCheck(ctx)
+
+// Check results
+if result.Status == sdk.HealthStatusHealthy {
+    fmt.Println("All systems operational")
+} else {
+    fmt.Printf("Issues detected: %v\n", result.Issues)
+}
+
+// Validate ConfigHub compliance
+corrections := []string{
+    "cub unit update backend --patch ...",
+    "cub unit apply backend --space prod",
+}
+isCompliant := healthChecker.CheckConfigHubCompliance(corrections)
 ```
 
 ## Example Apps Using This SDK

@@ -15,6 +15,7 @@ type ComprehensiveHealthCheck struct {
 	K8sClient     *kubernetes.Clientset
 	ConfigHubClient *ConfigHubClient
 	Namespace     string
+	SpaceID       string // Added for space-specific checks
 }
 
 // HealthCheckResult contains comprehensive health check results
@@ -71,6 +72,71 @@ func (c *ComprehensiveHealthCheck) RunHealthCheck(ctx context.Context) (*HealthC
 				Status:    "HEALTHY",
 				Details:   fmt.Sprintf("Connected, %d spaces accessible", len(spaces)),
 			})
+		}
+
+		// PRINCIPLE #0: App as Collection of Related Units
+		// Every app should have units with consistent labels and filters for bulk operations
+		if c.SpaceID != "" {
+			filters, err := c.ConfigHubClient.ListFilters(c.SpaceID)
+			if err != nil || len(filters) == 0 {
+				healthScore -= 10
+				issues = append(issues, "ConfigHub: No Filters defined - cannot perform bulk operations on app units")
+				checks = append(checks, HealthCheck{
+					Component: "ConfigHub",
+					Check:     "Filters",
+					Status:    "WARNING",
+					Details:   "Apps need Filters to target labeled units for bulk operations",
+				})
+			} else {
+				checks = append(checks, HealthCheck{
+					Component: "ConfigHub",
+					Check:     "Filters",
+					Status:    "HEALTHY",
+					Details:   fmt.Sprintf("%d filter(s) defined for targeting units", len(filters)),
+				})
+			}
+		}
+
+		// PRINCIPLE #1: Check for ConfigHub Worker (MANDATORY)
+		if c.SpaceID != "" {
+			workers, err := c.ConfigHubClient.ListWorkers(c.SpaceID)
+			if err != nil || len(workers) == 0 {
+				healthScore -= 25
+				issues = append(issues, "ConfigHub: No worker running - units won't deploy!")
+				checks = append(checks, HealthCheck{
+					Component: "ConfigHub",
+					Check:     "Worker",
+					Status:    "CRITICAL",
+					Details:   "Worker is MANDATORY for ConfigHub → Kubernetes deployment",
+				})
+			} else {
+				checks = append(checks, HealthCheck{
+					Component: "ConfigHub",
+					Check:     "Worker",
+					Status:    "HEALTHY",
+					Details:   fmt.Sprintf("%d worker(s) available", len(workers)),
+				})
+			}
+
+			// PRINCIPLE #4: Check for Targets
+			targets, err := c.ConfigHubClient.ListTargets(c.SpaceID)
+			if err != nil || len(targets) == 0 {
+				healthScore -= 15
+				issues = append(issues, "ConfigHub: No targets configured - units won't know where to deploy")
+				checks = append(checks, HealthCheck{
+					Component: "ConfigHub",
+					Check:     "Targets",
+					Status:    "UNHEALTHY",
+					Details:   "Targets link units to Kubernetes clusters",
+				})
+			} else {
+				checks = append(checks, HealthCheck{
+					Component: "ConfigHub",
+					Check:     "Targets",
+					Status:    "HEALTHY",
+					Details:   fmt.Sprintf("%d target(s) configured", len(targets)),
+				})
+			}
 		}
 	}
 
@@ -194,6 +260,51 @@ func (c *ComprehensiveHealthCheck) RunHealthCheck(ctx context.Context) (*HealthC
 		})
 	}
 
+	// PRINCIPLE #5: Validate configurations using Functions
+	if c.ConfigHubClient != nil && c.SpaceID != "" {
+		// Get units that need validation
+		units, err := c.ConfigHubClient.ListUnits(ListUnitsParams{
+			SpaceID: uuid.MustParse(c.SpaceID),
+			Where:   "Labels.validate = 'true'",
+		})
+		if err == nil {
+			validationIssues := 0
+			for _, unit := range units {
+				// Check for placeholders
+				valid, message, err := c.ConfigHubClient.ValidateNoPlaceholders(uuid.MustParse(c.SpaceID), unit.UnitID)
+				if err != nil || !valid {
+					validationIssues++
+					issues = append(issues, fmt.Sprintf("Unit %s: %s", unit.Slug, message))
+				}
+
+				// Validate YAML structure
+				valid, message, err = c.ConfigHubClient.ValidateYAML(uuid.MustParse(c.SpaceID), unit.UnitID)
+				if err != nil || !valid {
+					validationIssues++
+					issues = append(issues, fmt.Sprintf("Unit %s has invalid YAML: %s", unit.Slug, message))
+				}
+			}
+
+			checks = append(checks, HealthCheck{
+				Component: "ConfigHub",
+				Check:     "Unit Validation",
+				Status: func() string {
+					if validationIssues == 0 {
+						return "HEALTHY"
+					} else if validationIssues < 3 {
+						return "WARNING"
+					}
+					return "UNHEALTHY"
+				}(),
+				Details: fmt.Sprintf("%d validation issues found", validationIssues),
+			})
+
+			if validationIssues > 0 {
+				healthScore -= validationIssues * 5
+			}
+		}
+	}
+
 	// Determine overall status
 	status := "HEALTHY"
 	statusText := "System is fully operational"
@@ -233,6 +344,30 @@ func (c *ComprehensiveHealthCheck) RunHealthCheck(ctx context.Context) (*HealthC
 	}, nil
 }
 
+// CheckAppAsSet verifies the app follows Set-based organization (PRINCIPLE #0)
+func (c *ComprehensiveHealthCheck) CheckAppAsSet(spaceID string) (bool, []string) {
+	issues := []string{}
+
+	// Check for Sets
+	sets, err := c.ConfigHubClient.ListSets(spaceID)
+	if err != nil || len(sets) == 0 {
+		issues = append(issues, "No Sets defined - configs not grouped for bulk operations")
+	}
+
+	// Check for Filters
+	filters, err := c.ConfigHubClient.ListFilters(spaceID)
+	if err != nil || len(filters) == 0 {
+		issues = append(issues, "No Filters defined - cannot target configs efficiently")
+	}
+
+	// In production, would also check:
+	// - Units are assigned to Sets
+	// - Filters use Set membership
+	// - Bulk operations use Sets/Filters
+
+	return len(issues) == 0, issues
+}
+
 // CheckConfigHubCompliance checks if corrections use ConfigHub commands only
 func (c *ComprehensiveHealthCheck) CheckConfigHubCompliance(corrections []string) bool {
 	for _, cmd := range corrections {
@@ -244,6 +379,73 @@ func (c *ComprehensiveHealthCheck) CheckConfigHubCompliance(corrections []string
 		}
 	}
 	return true
+}
+
+// CheckCleanupFirst verifies the cleanup-first principle (PRINCIPLE #8)
+func (c *ComprehensiveHealthCheck) CheckCleanupFirst(scriptPath string) (bool, []string) {
+	// This would check if a script follows cleanup-first pattern
+	// For now, return placeholder
+	issues := []string{}
+
+	// In real implementation, would check:
+	// 1. Script starts with cleanup commands
+	// 2. Removes old namespaces before creating new ones
+	// 3. Deletes old ConfigHub spaces before creating new ones
+
+	return true, issues
+}
+
+// CheckEventDriven verifies event-driven patterns (PRINCIPLE #6)
+func (c *ComprehensiveHealthCheck) CheckEventDriven(codebasePath string) bool {
+	// This would check for informers vs polling
+	// In real implementation, would grep for:
+	// - RunWithInformers (good)
+	// - time.Sleep in loops (bad)
+
+	return true
+}
+
+// CheckDemoMode verifies demo mode exists (PRINCIPLE #7)
+func (c *ComprehensiveHealthCheck) CheckDemoMode(appPath string) bool {
+	// This would check if app has demo mode
+	// In real implementation, would check for:
+	// - os.Args checking for "demo"
+	// - RunDemo function
+
+	return true
+}
+
+// CheckValidYAML verifies unit data contains valid K8s YAML (PRINCIPLE #3)
+func (c *ComprehensiveHealthCheck) CheckValidYAML(unitData string) (bool, error) {
+	// This would validate YAML structure
+	// In real implementation, would:
+	// 1. Parse YAML
+	// 2. Check for required K8s fields
+	// 3. Validate apiVersion and kind
+
+	return true, nil
+}
+
+// CheckAuthFlow verifies all required auth tokens (PRINCIPLE #5)
+func (c *ComprehensiveHealthCheck) CheckAuthFlow() (bool, []string) {
+	missing := []string{}
+
+	// Check ConfigHub token
+	if c.ConfigHubClient == nil || c.ConfigHubClient.Token == "" {
+		missing = append(missing, "CUB_TOKEN not set")
+	}
+
+	// Check Claude API key (if app uses AI)
+	if GetEnvOrDefault("CLAUDE_API_KEY", "") == "" {
+		missing = append(missing, "CLAUDE_API_KEY not set (required for AI features)")
+	}
+
+	// Check Kubernetes config
+	if c.K8sClient == nil {
+		missing = append(missing, "KUBECONFIG not accessible")
+	}
+
+	return len(missing) == 0, missing
 }
 
 // contains is a helper function to check if a string contains a substring

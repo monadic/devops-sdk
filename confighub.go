@@ -127,6 +127,7 @@ type CreateUnitRequest struct {
 	UpstreamUnitID *uuid.UUID        `json:"UpstreamUnitID,omitempty"`
 	SetIDs         []uuid.UUID       `json:"SetIDs,omitempty"`
 	TargetID       *uuid.UUID        `json:"TargetID,omitempty"`
+	ChangeSetID    *uuid.UUID        `json:"ChangeSetID,omitempty"`
 }
 
 type CreateSetRequest struct {
@@ -605,4 +606,220 @@ func (c *ConfigHubClient) ApplyUnitsInOrder(spaceID uuid.UUID, unitSlugs []strin
 	}
 
 	return nil
+}
+
+// ListFilters lists filters in a space
+// TODO: Implement when ConfigHub API supports filter listing
+func (c *ConfigHubClient) ListFilters(spaceID uuid.UUID) ([]*Filter, error) {
+	// Placeholder implementation - would call actual ConfigHub API
+	return []*Filter{}, nil
+}
+
+// FunctionInvocationRequest represents a request to invoke a ConfigHub function
+type FunctionInvocationRequest struct {
+	FunctionName     string                   `json:"FunctionName"`
+	ToolchainType    string                   `json:"ToolchainType"`
+	Arguments        []FunctionArgument       `json:"Arguments,omitempty"`
+	Where            string                   `json:"Where,omitempty"`
+	FilterID         *uuid.UUID               `json:"FilterID,omitempty"`
+	DryRun           bool                     `json:"DryRun"`
+	ChangeSetID      *uuid.UUID               `json:"ChangeSetID,omitempty"`
+}
+
+type FunctionArgument struct {
+	ParameterName string      `json:"ParameterName"`
+	Value         interface{} `json:"Value"`
+}
+
+type FunctionInvocationResponse struct {
+	Results []FunctionResult `json:"Results"`
+}
+
+type FunctionResult struct {
+	UnitID       uuid.UUID              `json:"UnitID"`
+	UnitSlug     string                 `json:"UnitSlug"`
+	Success      bool                   `json:"Success"`
+	Error        string                 `json:"Error,omitempty"`
+	Output       interface{}            `json:"Output,omitempty"`
+	Value        interface{}            `json:"Value,omitempty"`
+	Passed       bool                   `json:"Passed,omitempty"` // For validation functions
+}
+
+// ExecuteFunction runs a ConfigHub function on units
+func (c *ConfigHubClient) ExecuteFunction(spaceID uuid.UUID, req FunctionInvocationRequest) (*FunctionInvocationResponse, error) {
+	endpoint := fmt.Sprintf("/space/%s/function/invoke", spaceID)
+	var result FunctionInvocationResponse
+	err := c.doRequest("POST", endpoint, req, &result)
+	return &result, err
+}
+
+// SetImageVersion uses the set-image function to update container image
+func (c *ConfigHubClient) SetImageVersion(spaceID, unitID uuid.UUID, containerName, image string) error {
+	req := FunctionInvocationRequest{
+		FunctionName:  "set-image",
+		ToolchainType: "Kubernetes/YAML",
+		Where:         fmt.Sprintf("UnitID = '%s'", unitID),
+		Arguments: []FunctionArgument{
+			{ParameterName: "container-name", Value: containerName},
+			{ParameterName: "image", Value: image},
+		},
+	}
+	_, err := c.ExecuteFunction(spaceID, req)
+	return err
+}
+
+// SetReplicas uses the set-replicas function to update replica count
+func (c *ConfigHubClient) SetReplicas(spaceID, unitID uuid.UUID, replicas int) error {
+	req := FunctionInvocationRequest{
+		FunctionName:  "set-replicas",
+		ToolchainType: "Kubernetes/YAML",
+		Where:         fmt.Sprintf("UnitID = '%s'", unitID),
+		Arguments: []FunctionArgument{
+			{ParameterName: "replicas", Value: replicas},
+		},
+	}
+	_, err := c.ExecuteFunction(spaceID, req)
+	return err
+}
+
+// ListWorkers lists workers in a space (placeholder for PRINCIPLE #1 requirement)
+// TODO: Implement when ConfigHub API supports worker listing
+func (c *ConfigHubClient) ListWorkers(spaceID string) ([]interface{}, error) {
+	// Placeholder implementation - ConfigHub worker API not yet available
+	// In production, this would call the actual ConfigHub API
+	// For now, return empty to trigger health check warnings
+	return []interface{}{}, nil
+}
+
+// ListTargets lists targets in a space (placeholder for PRINCIPLE #4 requirement)
+// TODO: Implement when ConfigHub API supports target listing
+func (c *ConfigHubClient) ListTargets(spaceID string) ([]interface{}, error) {
+	// Placeholder implementation - ConfigHub target API not yet available
+	// In production, this would call the actual ConfigHub API
+	// For now, return empty to trigger health check warnings
+	return []interface{}{}, nil
+}
+
+// ChangeSet operations for grouping related changes
+
+type ChangeSet struct {
+	ChangeSetID uuid.UUID         `json:"changeSetId"`
+	SpaceID     uuid.UUID         `json:"spaceId"`
+	DisplayName string            `json:"displayName"`
+	Description string            `json:"description"`
+	CreatedAt   string            `json:"createdAt"`
+	Labels      map[string]string `json:"labels,omitempty"`
+}
+
+type CreateChangeSetRequest struct {
+	DisplayName string            `json:"displayName"`
+	Description string            `json:"description"`
+	Labels      map[string]string `json:"labels,omitempty"`
+}
+
+// CreateChangeSet creates a new ChangeSet for grouping related changes
+func (c *ConfigHubClient) CreateChangeSet(spaceID uuid.UUID, req CreateChangeSetRequest) (*ChangeSet, error) {
+	result, err := c.doRequest("POST", fmt.Sprintf("/space/%s/changeset", spaceID), req, &ChangeSet{})
+	if err != nil {
+		return nil, err
+	}
+	return result.(*ChangeSet), nil
+}
+
+// GetChangeSet retrieves a ChangeSet
+func (c *ConfigHubClient) GetChangeSet(spaceID, changeSetID uuid.UUID) (*ChangeSet, error) {
+	result, err := c.doRequest("GET", fmt.Sprintf("/space/%s/changeset/%s", spaceID, changeSetID), nil, &ChangeSet{})
+	if err != nil {
+		return nil, err
+	}
+	return result.(*ChangeSet), nil
+}
+
+// DeleteChangeSet deletes a ChangeSet
+func (c *ConfigHubClient) DeleteChangeSet(spaceID, changeSetID uuid.UUID) error {
+	_, err := c.doRequest("DELETE", fmt.Sprintf("/space/%s/changeset/%s", spaceID, changeSetID), nil, nil)
+	return err
+}
+
+// ApplyChangeSet applies all changes in a ChangeSet
+func (c *ConfigHubClient) ApplyChangeSet(spaceID, changeSetID uuid.UUID) error {
+	_, err := c.doRequest("POST", fmt.Sprintf("/space/%s/changeset/%s/apply", spaceID, changeSetID), nil, nil)
+	return err
+}
+
+// UpdateUnitWithChangeSet updates a unit and associates it with a ChangeSet
+func (c *ConfigHubClient) UpdateUnitWithChangeSet(spaceID, unitID, changeSetID uuid.UUID, data interface{}) (*Unit, error) {
+	req := CreateUnitRequest{
+		Data:        data,
+		ChangeSetID: &changeSetID,
+	}
+	return c.UpdateUnit(spaceID, unitID, req)
+}
+
+// Validation Functions - Use ConfigHub's built-in validation
+
+// ValidateNoPlaceholders checks if a unit has any unresolved placeholders
+func (c *ConfigHubClient) ValidateNoPlaceholders(spaceID, unitID uuid.UUID) (bool, string, error) {
+	req := FunctionInvocationRequest{
+		FunctionName:  "no-placeholders",
+		ToolchainType: "Kubernetes/YAML",
+		Where:         fmt.Sprintf("UnitID = '%s'", unitID),
+	}
+	result, err := c.ExecuteFunction(spaceID, req)
+	if err != nil {
+		return false, "", err
+	}
+
+	if len(result.Results) > 0 && result.Results[0].Success {
+		return result.Results[0].Passed, fmt.Sprintf("Unit %s validation", result.Results[0].UnitSlug), nil
+	}
+	return false, "Validation failed", nil
+}
+
+// ValidateCEL validates units against a CEL (Common Expression Language) expression
+func (c *ConfigHubClient) ValidateCEL(spaceID uuid.UUID, where, expression string) ([]FunctionResult, error) {
+	req := FunctionInvocationRequest{
+		FunctionName:  "cel-validate",
+		ToolchainType: "Kubernetes/YAML",
+		Where:         where,
+		Arguments: []FunctionArgument{
+			{ParameterName: "expression", Value: expression},
+		},
+	}
+	result, err := c.ExecuteFunction(spaceID, req)
+	if err != nil {
+		return nil, err
+	}
+	return result.Results, nil
+}
+
+// GetReplicas uses the get-replicas function to retrieve replica counts
+func (c *ConfigHubClient) GetReplicas(spaceID uuid.UUID, where string) ([]FunctionResult, error) {
+	req := FunctionInvocationRequest{
+		FunctionName:  "get-replicas",
+		ToolchainType: "Kubernetes/YAML",
+		Where:         where,
+	}
+	result, err := c.ExecuteFunction(spaceID, req)
+	if err != nil {
+		return nil, err
+	}
+	return result.Results, nil
+}
+
+// SetIntPath sets an integer value at a specific path in the configuration
+func (c *ConfigHubClient) SetIntPath(spaceID, unitID uuid.UUID, apiVersion, kind, path string, value int) error {
+	req := FunctionInvocationRequest{
+		FunctionName:  "set-int-path",
+		ToolchainType: "Kubernetes/YAML",
+		Where:         fmt.Sprintf("UnitID = '%s'", unitID),
+		Arguments: []FunctionArgument{
+			{ParameterName: "apiVersion", Value: apiVersion},
+			{ParameterName: "kind", Value: kind},
+			{ParameterName: "path", Value: path},
+			{ParameterName: "value", Value: value},
+		},
+	}
+	_, err := c.ExecuteFunction(spaceID, req)
+	return err
 }
