@@ -185,6 +185,14 @@ ConfigHub → Git → Flux/Argo → Kubernetes for production compliance.
 - Compliance validation for ConfigHub-only commands
 - Detailed error reporting and diagnostics
 
+### Helm Integration (`helm.go`)
+- Wrap ConfigHub's native Helm support
+- Install and upgrade Helm charts as ConfigHub units
+- List and manage Helm releases
+- Detect drift in Helm chart versions
+- Validate Helm values with ConfigHub functions
+- Generate upgrade commands for corrections
+
 ## Usage
 
 ### Creating a New DevOps App
@@ -333,6 +341,46 @@ units, err := cub.BulkCloneUnitsWithUpstream(
 err = cub.ApplyUnitsInOrder(spaceID, []string{
     "namespace", "rbac", "service", "deployment",
 })
+```
+
+### Helm Chart Management
+```go
+// Create Helm helper
+helm := sdk.NewHelmHelper(cub, spaceID)
+
+// Install a Helm chart
+err := helm.InstallChart("my-nginx", "bitnami/nginx", sdk.HelmOptions{
+    Namespace: "web",
+    Version:   "15.5.2",
+    Values: []string{
+        "service.type=LoadBalancer",
+        "replicaCount=3",
+    },
+})
+
+// List Helm releases
+releases, err := helm.ListHelmReleases()
+for _, release := range releases {
+    fmt.Printf("Release: %s, Chart: %s v%s\n",
+        release.Name, release.Chart, release.Version)
+}
+
+// Check for newer versions
+release, _ := helm.GetHelmRelease("my-nginx")
+hasUpdate, newVersion, _ := helm.CompareChartVersions(release)
+if hasUpdate {
+    fmt.Printf("Update available: %s -> %s\n", release.Version, newVersion)
+
+    // Upgrade the chart
+    err = helm.UpgradeChart("my-nginx", "bitnami/nginx", sdk.HelmOptions{
+        Version: newVersion,
+        UpdateCRDs: true,
+    })
+}
+
+// Generate correction command for drift
+cmd := helm.GenerateUpgradeCommand(release, newVersion)
+fmt.Printf("To fix drift, run: %s\n", cmd)
 ```
 
 #### Kubernetes Helpers
