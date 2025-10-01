@@ -7,6 +7,8 @@ package sdk
 import (
 	"fmt"
 	"log"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -229,26 +231,11 @@ func (rc *RetryableClient) isRetryable(err error) bool {
 
 	errMsg := err.Error()
 	for _, pattern := range rc.config.RetryableErrors {
-		if contains(errMsg, pattern) {
+		if strings.Contains(errMsg, pattern) {
 			return true
 		}
 	}
 
-	return false
-}
-
-// Helper function
-func contains(str, substr string) bool {
-	return len(str) >= len(substr) && (str == substr || len(substr) == 0 ||
-		(len(str) > 0 && len(substr) > 0 && containsHelper(str, substr)))
-}
-
-func containsHelper(str, substr string) bool {
-	for i := 0; i <= len(str)-len(substr); i++ {
-		if str[i:i+len(substr)] == substr {
-			return true
-		}
-	}
 	return false
 }
 

@@ -367,12 +367,16 @@ func RenderUnitsTable(units []*Unit, showUpstream bool) string {
 
 // RenderSetsTable creates a table from ConfigHub sets
 func RenderSetsTable(sets []*Set) string {
-	table := NewTable("Set", "Display Name", "Members", "Created")
+	table := NewTable("Set", "Display Name", "Labels", "Created")
 
 	for _, set := range sets {
-		memberCount := "0"
-		if set.UnitIDs != nil {
-			memberCount = fmt.Sprintf("%d", len(set.UnitIDs))
+		labels := "-"
+		if len(set.Labels) > 0 {
+			var labelPairs []string
+			for k, v := range set.Labels {
+				labelPairs = append(labelPairs, fmt.Sprintf("%s=%s", k, v))
+			}
+			labels = strings.Join(labelPairs, ",")
 		}
 
 		created := formatTimestamp(set.CreatedAt)
@@ -380,7 +384,7 @@ func RenderSetsTable(sets []*Set) string {
 		table.AddRow(
 			set.Slug,
 			truncate(set.DisplayName, 40),
-			memberCount,
+			truncate(labels, 30),
 			created,
 		)
 	}
@@ -390,7 +394,7 @@ func RenderSetsTable(sets []*Set) string {
 
 // RenderFiltersTable creates a table from ConfigHub filters
 func RenderFiltersTable(filters []*Filter) string {
-	table := NewTable("Filter", "Resource Type", "Where Clause", "Created")
+	table := NewTable("Filter", "From", "Where Clause", "Created")
 
 	for _, filter := range filters {
 		whereClause := filter.Where
@@ -402,7 +406,7 @@ func RenderFiltersTable(filters []*Filter) string {
 
 		table.AddRow(
 			filter.Slug,
-			filter.ResourceType,
+			filter.From,
 			truncate(whereClause, 40),
 			created,
 		)

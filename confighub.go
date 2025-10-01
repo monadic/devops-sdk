@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -213,9 +214,32 @@ func (c *ConfigHubClient) GetSpace(spaceID uuid.UUID) (*Space, error) {
 	return result.(*Space), nil
 }
 
+// SpaceSummary is the wrapper returned by the /space endpoint
+type SpaceSummary struct {
+	Space                      *Space                  `json:"Space"`
+	TotalUnitCount             int                     `json:"TotalUnitCount"`
+	TotalLinkCount             int                     `json:"TotalLinkCount"`
+	GatedUnitCount             int                     `json:"GatedUnitCount"`
+	IncompleteApplyUnitCount   int                     `json:"IncompleteApplyUnitCount"`
+	RecentChangeUnitCount      int                     `json:"RecentChangeUnitCount"`
+	TotalBridgeWorkerCount     int                     `json:"TotalBridgeWorkerCount"`
+	UnlinkedUnitCount          int                     `json:"UnlinkedUnitCount"`
+	TargetCountByToolchainType map[string]int          `json:"TargetCountByToolchainType"`
+	TriggerCountByEventType    map[string]int          `json:"TriggerCountByEventType"`
+}
+
 func (c *ConfigHubClient) ListSpaces() ([]*Space, error) {
-	var spaces []*Space
-	return spaces, c.doRequestList("GET", "/space", nil, &spaces)
+	var summaries []SpaceSummary
+	if err := c.doRequestList("GET", "/space", nil, &summaries); err != nil {
+		return nil, err
+	}
+
+	// Extract just the Space objects
+	spaces := make([]*Space, len(summaries))
+	for i, summary := range summaries {
+		spaces[i] = summary.Space
+	}
+	return spaces, nil
 }
 
 func (c *ConfigHubClient) DeleteSpace(spaceID uuid.UUID) error {
@@ -445,6 +469,12 @@ func (c *ConfigHubClient) doRequestList(method, endpoint string, body interface{
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
 	req.Header.Set("Content-Type", "application/json")
 
+	// Debug logging
+	if os.Getenv("CUB_DEBUG") == "true" {
+		log.Printf("DEBUG: %s %s", method, url)
+		log.Printf("DEBUG: Authorization: Bearer %s...", c.token[:20])
+	}
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("send request: %w", err)
@@ -456,17 +486,30 @@ func (c *ConfigHubClient) doRequestList(method, endpoint string, body interface{
 		return fmt.Errorf("read response: %w", err)
 	}
 
+	// Debug logging
+	if os.Getenv("CUB_DEBUG") == "true" {
+		log.Printf("DEBUG: Response status: %d", resp.StatusCode)
+		log.Printf("DEBUG: Response body preview: %s", string(respBody[:min(200, len(respBody))]))
+	}
+
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("API error %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	if len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, result); err != nil {
-			return fmt.Errorf("unmarshal response: %w", err)
+			return fmt.Errorf("unmarshal response (preview: %s...): %w", string(respBody[:min(100, len(respBody))]), err)
 		}
 	}
 
 	return nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // High-level convenience helpers
@@ -649,7 +692,7 @@ type FunctionResult struct {
 func (c *ConfigHubClient) ExecuteFunction(spaceID uuid.UUID, req FunctionInvocationRequest) (*FunctionInvocationResponse, error) {
 	endpoint := fmt.Sprintf("/space/%s/function/invoke", spaceID)
 	var result FunctionInvocationResponse
-	err := c.doRequest("POST", endpoint, req, &result)
+	_, err := c.doRequest("POST", endpoint, req, &result)
 	return &result, err
 }
 
@@ -749,8 +792,20 @@ func (c *ConfigHubClient) ApplyChangeSet(spaceID, changeSetID uuid.UUID) error {
 
 // UpdateUnitWithChangeSet updates a unit and associates it with a ChangeSet
 func (c *ConfigHubClient) UpdateUnitWithChangeSet(spaceID, unitID, changeSetID uuid.UUID, data interface{}) (*Unit, error) {
+	// Convert data to JSON string if it's not already a string
+	var dataStr string
+	if str, ok := data.(string); ok {
+		dataStr = str
+	} else {
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal data: %w", err)
+		}
+		dataStr = string(jsonData)
+	}
+
 	req := CreateUnitRequest{
-		Data:        data,
+		Data:        dataStr,
 		ChangeSetID: &changeSetID,
 	}
 	return c.UpdateUnit(spaceID, unitID, req)
