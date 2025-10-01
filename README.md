@@ -16,6 +16,9 @@ A comprehensive Go SDK for building DevOps automation applications using ConfigH
 - **`deployment_enterprise.go`** - Enterprise mode deployment (via Git)
 - **`health.go`** - Health check endpoints for monitoring
 - **`health_check.go`** - Comprehensive health checking system
+- **`tables.go`** - ASCII table rendering for terminal output
+- **`retry.go`** - Retry logic with exponential backoff
+- **`package.go`** - Package management for ConfigHub resources
 
 ## Overview
 
@@ -200,6 +203,35 @@ ConfigHub → Git → Flux/Argo → Kubernetes for production compliance.
 - Backup and restore spaces with timestamps
 - Publish packages to Git repositories
 - Support for versioned packages
+
+### ASCII Table Rendering (`tables.go`)
+- Beautiful Unicode box-drawing tables for terminal output
+- Standardized table formats for ConfigHub resources
+- Color support with ANSI escape codes
+- Automatic column width calculation
+
+**Available tables:**
+- `RenderSpacesTable()` - List ConfigHub spaces
+- `RenderUnitsTable()` - Display units with optional upstream info
+- `RenderSetsTable()` - Show configured Sets
+- `RenderFiltersTable()` - Display Filters with WHERE clauses
+- `RenderActivityTable()` - Show activity timeline
+- `RenderStateComparisonTable()` - Compare desired vs actual state
+- `RenderEnvironmentHierarchyTable()` - Show env relationships
+- `RenderCostAnalysisTable()` - Display cost estimates
+- `RenderSuccessFailureTable()` - Show operation results
+- `RenderKubectlTable()` - Generic table with custom headers
+
+### Retry Logic (`retry.go`)
+- Exponential backoff with configurable parameters
+- Context-aware cancellation support
+- Retryable error pattern matching
+- Comprehensive logging
+
+**Key Functions:**
+- `NewRetryableClient()` - Create client with retry support
+- `RunWithRetry()` - Execute function with automatic retries
+- `RetryConfig` - Configure max attempts, initial delay, max delay, multiplier
 
 ## Usage
 
@@ -474,6 +506,8 @@ Example log output:
 
 ## Helper Functions
 
+### Environment Variables
+
 ```go
 // Environment variables with defaults
 namespace := sdk.GetEnvOrDefault("NAMESPACE", "default")
@@ -481,11 +515,61 @@ required := sdk.GetEnvOrPanic("CLAUDE_API_KEY")
 enabled := sdk.GetEnvBool("AUTO_APPLY", false)
 interval := sdk.GetEnvDuration("CHECK_INTERVAL", 5*time.Minute)
 port := sdk.GetEnvInt("PORT", 8080)
+```
 
-// Retry logic
+### Retry Logic
+
+```go
+// Simple retry with default config
 err := sdk.RunWithRetry(ctx, 3, func() error {
     return apiCall()
 })
+
+// Advanced retry with custom config
+config := sdk.RetryConfig{
+    MaxAttempts:     5,
+    InitialDelay:    1 * time.Second,
+    MaxDelay:        30 * time.Second,
+    Multiplier:      2.0,
+    RetryableErrors: []string{"connection refused", "timeout"},
+}
+client := sdk.NewRetryableClient(config)
+err := client.Do(ctx, func() error {
+    return unreliableOperation()
+})
+```
+
+### ASCII Table Rendering
+
+```go
+// Render ConfigHub spaces
+spaces, _ := cub.ListSpaces()
+fmt.Println(sdk.RenderSpacesTable(spaces))
+
+// Render units with upstream relationships
+units, _ := cub.ListUnits(sdk.ListUnitsParams{SpaceID: spaceID})
+fmt.Println(sdk.RenderUnitsTable(units, true))
+
+// Render state comparison (drift detection)
+resources := []sdk.ResourceState{
+    {
+        Name:         "Deployment/backend-api",
+        DesiredState: "replicas: 3",
+        ActualState:  "replicas: 5",
+        Drift:        true,
+    },
+}
+fmt.Println(sdk.RenderStateComparisonTable(resources))
+
+// Render cost analysis
+estimates := []sdk.UnitCostEstimate{
+    {
+        UnitSlug:     "backend-api",
+        MonthlyCost:  150.00,
+        ResourceType: "Deployment",
+    },
+}
+fmt.Println(sdk.RenderCostAnalysisTable(estimates))
 ```
 
 ## Comprehensive Health Checking
