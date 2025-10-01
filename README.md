@@ -519,70 +519,84 @@ isCompliant := healthChecker.CheckConfigHubCompliance(corrections)
 
 ## Example Apps Using This SDK
 
-### Drift Detector (Real Event-Driven Implementation)
-```go
-func main() {
-    app, _ := sdk.NewDevOpsApp(sdk.DevOpsAppConfig{
-        Name: "drift-detector",
-    })
+The SDK is used by three production-ready DevOps apps in the [devops-examples](https://github.com/monadic/devops-examples) repository:
 
-    // Event-driven approach using Kubernetes informers
-    app.RunWithInformers(func() error {
-        // Get units from ConfigHub using Sets and Filters
-        criticalSet, _ := app.Cub.GetSet(spaceID, "critical-services")
-        units, _ := app.Cub.ListUnits(sdk.ListUnitsParams{
-            SpaceID: spaceID,
-            Where:   fmt.Sprintf("'%s' IN SetIDs", criticalSet.SetID),
-        })
+### 1. Drift Detector
 
-        // Get live deployments (triggered by K8s events)
-        deployments, _ := app.K8s.Clientset.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+Event-driven configuration drift detection with auto-correction.
 
-        // Compare and analyze with Claude (with full logging)
-        app.Claude.EnableDebugLogging()
-        analysis, _ := app.Claude.AnalyzeJSON(
-            "Compare expected vs actual Kubernetes state and identify drift",
-            comparisonData,
-        )
+**Key features:**
+- Kubernetes informers for real-time drift detection
+- ConfigHub Sets and Filters for targeting critical services
+- Claude AI for root cause analysis
+- Push-upgrade pattern for multi-environment fixes
+- Web dashboard on :8080
 
-        // Apply fixes using push-upgrade pattern
-        if analysis.HasDrift {
-            app.Cub.BulkPatchUnits(sdk.BulkPatchParams{
-                SpaceID: spaceID,
-                Where:   "Labels.tier = 'critical'",
-                Patch:   analysis.FixPatch,
-                Upgrade: true,
-            })
-        }
-
-        return nil
-    })
-}
+**Deployment:**
+```bash
+cd devops-examples/drift-detector
+bin/install-base    # Create ConfigHub structure
+bin/setup-worker    # Install ConfigHub worker
+bin/apply-base      # Deploy to Kubernetes
+bin/test-workflow   # Validate everything works
 ```
 
-### Cost Optimizer (Simplified)
-```go
-func main() {
-    app, _ := sdk.NewDevOpsApp(sdk.DevOpsAppConfig{
-        Name: "cost-optimizer",
-    })
+See [QUICKSTART.md](https://github.com/monadic/devops-examples/blob/main/drift-detector/QUICKSTART.md) for full guide.
 
-    app.Run(func() error {
-        // Get resource metrics
-        podMetrics, _ := app.K8s.MetricsClient.MetricsV1beta1().PodMetricses("").List(...)
+### 2. Cost Optimizer
 
-        // Analyze costs with Claude
-        recommendations, _ := app.Claude.AnalyzeJSON("Optimize costs", usage)
+AI-powered cost optimization with OpenCost integration.
 
-        // Create optimization space in ConfigHub
-        app.Cub.CreateSpace(sdk.Space{
-            Slug: fmt.Sprintf("cost-opt-%d", time.Now().Unix()),
-        })
+**Key features:**
+- Real-time cost analysis from OpenCost or AWS pricing
+- Claude AI cost recommendations
+- Bulk optimization across environments
+- Interactive web dashboard on :8081
+- Metrics server integration
 
-        return nil
-    })
-}
+**Deployment:**
+```bash
+cd devops-examples/cost-optimizer
+bin/install-base    # Create ConfigHub structure
+bin/setup-worker    # Install ConfigHub worker
+bin/apply-base      # Deploy to Kubernetes
+bin/test-workflow   # Validate everything works
 ```
+
+See [QUICKSTART.md](https://github.com/monadic/devops-examples/blob/main/cost-optimizer/QUICKSTART.md) for full guide.
+
+### 3. Cost Impact Monitor
+
+Pre-deployment cost analysis with trigger-based hooks.
+
+**Key features:**
+- Monitors all ConfigHub spaces for cost changes
+- Pre-apply warnings for high-cost deployments
+- Post-apply verification and learning
+- Cross-environment cost tracking
+- Web dashboard on :8083
+
+**Deployment:**
+```bash
+cd devops-examples/cost-impact-monitor
+bin/install-base    # Create ConfigHub structure
+bin/setup-worker    # Install ConfigHub worker
+bin/apply-base      # Deploy to Kubernetes
+bin/test-workflow   # Validate everything works
+```
+
+See [QUICKSTART.md](https://github.com/monadic/devops-examples/blob/main/cost-impact-monitor/QUICKSTART.md) for full guide.
+
+### Common Workflow
+
+All examples follow the same deployment pattern:
+
+1. **Create ConfigHub structure** - `bin/install-base` creates spaces, filters, and units
+2. **Set up worker** - `bin/setup-worker` installs ConfigHub worker for applies
+3. **Deploy to Kubernetes** - `bin/apply-base` sets targets and applies units
+4. **Validate** - `bin/test-workflow` checks everything is working
+
+This demonstrates the **ConfigHub → Worker → Kubernetes** deployment workflow that replaces traditional `kubectl apply` with ConfigHub-managed deployments.
 
 ## Benefits
 
