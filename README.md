@@ -1,6 +1,6 @@
 # DevOps SDK
 
-A comprehensive Go SDK for building DevOps automation applications using ConfigHub as the configuration backend. This SDK provides reusable modules for cost analysis, waste detection, resource optimization, and deployment strategies.
+A Go SDK for building DevOps automation applications using ConfigHub as the configuration backend.  This SDK provides reusable modules for cost analysis, waste detection, resource optimization, and deployment strategies.  It extends the official SDK for ConfigHub which is [here](https://github.com/confighub/sdk).
 
 ## SDK Modules
 
@@ -22,15 +22,17 @@ A comprehensive Go SDK for building DevOps automation applications using ConfigH
 
 ## Overview
 
-The DevOps SDK enables building persistent, event-driven DevOps applications that are superior to ephemeral workflow-based solutions. Key advantages:
+Some requirements for apps built using this SDK include:
 
 - **Persistent Apps**: Run continuously with Kubernetes informers, not just when triggered
 - **Event-Driven**: React immediately to changes, not on schedules
-- **Stateful**: ConfigHub tracks all state and history
+- **Stateful**: ConfigHub tracks all config state and history
 - **AI-Powered**: Integrated Claude AI for intelligent decisions
 - **Bulk Operations**: Sets and Filters for cross-environment operations
 
 ## Core Modules
+
+All content below this line 100% created by Claude.
 
 ### 1. Cost Analysis Module (`cost.go`) - 744 lines
 Analyzes resource costs across ConfigHub spaces and Kubernetes deployments.
