@@ -18,6 +18,7 @@
 package sdk
 
 import (
+	"encoding/base64"
 	"fmt"
 	"math"
 	"strconv"
@@ -266,14 +267,20 @@ func (ca *CostAnalyzer) AnalyzeSpace() (*SpaceCostAnalysis, error) {
 
 // analyzeUnit analyzes a single ConfigHub unit
 func (ca *CostAnalyzer) analyzeUnit(unit Unit) (*UnitCostEstimate, error) {
+	// Decode base64 data if needed
+	data := unit.Data
+	if decoded, err := base64.StdEncoding.DecodeString(unit.Data); err == nil {
+		data = string(decoded)
+	}
+
 	// Skip non-Kubernetes resources
-	if !strings.Contains(unit.Data, "apiVersion") {
+	if !strings.Contains(data, "apiVersion") {
 		return nil, nil
 	}
 
 	// Parse the Kubernetes manifest
 	var manifest map[string]interface{}
-	if err := yaml.Unmarshal([]byte(unit.Data), &manifest); err != nil {
+	if err := yaml.Unmarshal([]byte(data), &manifest); err != nil {
 		return nil, fmt.Errorf("failed to parse manifest: %v", err)
 	}
 

@@ -274,12 +274,38 @@ func (c *ConfigHubClient) UpdateUnit(spaceID, unitID uuid.UUID, req CreateUnitRe
 }
 
 func (c *ConfigHubClient) ListUnits(params ListUnitsParams) ([]*Unit, error) {
-	var units []*Unit
+	// API returns wrapped format: [{"Unit": {...}}, ...]
+	var response []struct {
+		Unit *Unit `json:"Unit"`
+	}
 	endpoint := fmt.Sprintf("/space/%s/unit", params.SpaceID)
 	if params.Where != "" {
 		endpoint += fmt.Sprintf("?where=%s", params.Where)
 	}
-	return units, c.doRequestList("GET", endpoint, nil, &units)
+	err := c.doRequestList("GET", endpoint, nil, &response)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract units from wrapped response
+	units := make([]*Unit, 0, len(response))
+	for _, wrapper := range response {
+		if wrapper.Unit != nil {
+			units = append(units, wrapper.Unit)
+		}
+	}
+
+	if os.Getenv("CUB_DEBUG") == "true" && len(units) > 0 {
+		fmt.Printf("[DEBUG] ListUnits returned %d units for space %s\n", len(units), params.SpaceID)
+		for i, u := range units {
+			dataPreview := u.Data
+			if len(dataPreview) > 100 {
+				dataPreview = dataPreview[:100] + "..."
+			}
+			fmt.Printf("[DEBUG] Unit[%d]: Slug=%s, Data length=%d, Preview=%q\n", i, u.Slug, len(u.Data), dataPreview)
+		}
+	}
+	return units, nil
 }
 
 func (c *ConfigHubClient) ApplyUnit(spaceID, unitID uuid.UUID) error {

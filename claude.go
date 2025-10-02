@@ -9,8 +9,20 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
+
+// ClaudeAPICall represents a single API interaction with Claude
+type ClaudeAPICall struct {
+	RequestID    string    `json:"request_id"`
+	Timestamp    time.Time `json:"timestamp"`
+	Prompt       string    `json:"prompt"`
+	Response     string    `json:"response"`
+	Duration     string    `json:"duration"`
+	Success      bool      `json:"success"`
+	ErrorMessage string    `json:"error_message,omitempty"`
+}
 
 // ClaudeClient provides a simple interface to Claude API with comprehensive logging
 type ClaudeClient struct {
@@ -19,6 +31,9 @@ type ClaudeClient struct {
 	logger         *log.Logger
 	enableDebugLog bool
 	requestCounter int64
+	history        []ClaudeAPICall
+	historyMu      sync.RWMutex
+	maxHistory     int
 }
 
 // NewClaudeClient creates a new Claude API client with logging
@@ -39,6 +54,30 @@ func NewClaudeClient(apiKey string) *ClaudeClient {
 		logger:         logger,
 		enableDebugLog: enableDebug,
 		requestCounter: 0,
+		history:        make([]ClaudeAPICall, 0, 10),
+		maxHistory:     10, // Keep last 10 API calls
+	}
+}
+
+// GetRecentCalls returns the most recent API calls (for dashboard display)
+func (c *ClaudeClient) GetRecentCalls() []ClaudeAPICall {
+	c.historyMu.RLock()
+	defer c.historyMu.RUnlock()
+
+	// Return a copy to avoid race conditions
+	result := make([]ClaudeAPICall, len(c.history))
+	copy(result, c.history)
+	return result
+}
+
+// addToHistory adds a call to the history buffer
+func (c *ClaudeClient) addToHistory(call ClaudeAPICall) {
+	c.historyMu.Lock()
+	defer c.historyMu.Unlock()
+
+	c.history = append(c.history, call)
+	if len(c.history) > c.maxHistory {
+		c.history = c.history[1:] // Remove oldest
 	}
 }
 
@@ -104,12 +143,30 @@ func (c *ClaudeClient) Complete(prompt string) (string, error) {
 
 	if err := json.Unmarshal(body, &result); err != nil {
 		c.logError(requestID, fmt.Errorf("unmarshal response: %w", err))
+		c.addToHistory(ClaudeAPICall{
+			RequestID:    requestID,
+			Timestamp:    startTime,
+			Prompt:       truncateString(prompt, 200),
+			Response:     "",
+			Duration:     time.Since(startTime).String(),
+			Success:      false,
+			ErrorMessage: fmt.Sprintf("unmarshal response: %v", err),
+		})
 		return "", fmt.Errorf("unmarshal response: %w", err)
 	}
 
 	if len(result.Content) == 0 {
 		err := fmt.Errorf("empty response from Claude")
 		c.logError(requestID, err)
+		c.addToHistory(ClaudeAPICall{
+			RequestID:    requestID,
+			Timestamp:    startTime,
+			Prompt:       truncateString(prompt, 200),
+			Response:     "",
+			Duration:     time.Since(startTime).String(),
+			Success:      false,
+			ErrorMessage: "empty response from Claude",
+		})
 		return "", err
 	}
 
@@ -119,7 +176,25 @@ func (c *ClaudeClient) Complete(prompt string) (string, error) {
 	// Log the successful response
 	c.logResponse(requestID, response, duration)
 
+	// Add to history for dashboard display
+	c.addToHistory(ClaudeAPICall{
+		RequestID: requestID,
+		Timestamp: startTime,
+		Prompt:    truncateString(prompt, 200),
+		Response:  truncateString(response, 500),
+		Duration:  duration.String(),
+		Success:   true,
+	})
+
 	return response, nil
+}
+
+// truncateString truncates a string to maxLen with ellipsis
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // AnalyzeJSON sends a prompt with JSON data to Claude for analysis
