@@ -21,14 +21,26 @@ cleanup() {
   echo ""
   echo "🧹 Cleaning up test resources..."
 
-  # Destroy unit first (removes from K8s)
-  cub unit destroy test-pod --space confighub-tck 2>/dev/null || true
+  # Get space ID if it exists
+  SPACE_ID=$(cub space list --format json 2>/dev/null | jq -r '.[] | select(.Slug == "confighub-tck") | .ID' 2>/dev/null || echo "")
 
-  # Uninstall worker
-  cub worker uninstall tck-worker --space confighub-tck 2>/dev/null || true
+  if [ -n "$SPACE_ID" ]; then
+    echo "  Cleaning up space: $SPACE_ID"
 
-  # Delete space
-  cub space delete confighub-tck 2>/dev/null || true
+    # List and delete all units in the space
+    cub unit list --space confighub-tck --format json 2>/dev/null | \
+      jq -r '.[].Slug' 2>/dev/null | \
+      while read slug; do
+        echo "  Deleting unit: $slug"
+        cub unit delete "$slug" --space confighub-tck 2>/dev/null || true
+      done
+
+    # Uninstall worker
+    cub worker delete tck-worker --space confighub-tck 2>/dev/null || true
+
+    # Delete space
+    cub space delete confighub-tck 2>/dev/null || true
+  fi
 
   # Delete Kind cluster
   kind delete cluster --name confighub-tck 2>/dev/null || true
@@ -70,6 +82,12 @@ if ! cub space list &>/dev/null; then
 fi
 
 echo "✅ All prerequisites met"
+echo ""
+
+# Clean up any leftover resources from previous runs
+echo "Cleaning up any leftover resources..."
+kind delete cluster --name confighub-tck 2>/dev/null || true
+cub space delete confighub-tck 2>/dev/null || true
 echo ""
 
 # Step 1: Create Kind cluster
