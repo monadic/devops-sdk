@@ -112,11 +112,15 @@ echo ""
 # Step 3: Create test unit (minimal nginx pod)
 echo "Step 3: Create test unit (nginx pod)"
 echo "-------------------------------------"
-cat > /tmp/tck-test-pod.yaml <<'EOF'
+
+# Use unique name with timestamp to avoid conflicts
+UNIT_NAME="test-pod-$(date +%s)"
+
+cat > /tmp/tck-test-pod.yaml <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
-  name: test-pod
+  name: ${UNIT_NAME}
   namespace: default
   labels:
     app: tck-test
@@ -131,9 +135,9 @@ EOF
 cub unit create \
   --space confighub-tck \
   --label type=test \
-  test-pod \
+  "${UNIT_NAME}" \
   /tmp/tck-test-pod.yaml
-echo "✅ Unit created in ConfigHub"
+echo "✅ Unit created in ConfigHub (${UNIT_NAME})"
 echo ""
 
 # Step 4: Install ConfigHub worker
@@ -157,7 +161,7 @@ echo ""
 # Step 5: Apply unit to Kubernetes
 echo "Step 5: Apply unit to Kubernetes"
 echo "---------------------------------"
-cub unit apply test-pod --space confighub-tck
+cub unit apply "${UNIT_NAME}" --space confighub-tck
 echo "✅ Unit applied"
 echo ""
 
@@ -167,9 +171,9 @@ echo "-------------------------"
 echo "Waiting for pod to be ready (max 60s)..."
 
 # Wait for pod to be ready
-if ! kubectl wait --for=condition=ready pod/test-pod --timeout=60s 2>/dev/null; then
+if ! kubectl wait --for=condition=ready "pod/${UNIT_NAME}" --timeout=60s 2>/dev/null; then
   echo "❌ Pod did not become ready in time"
-  kubectl get pod test-pod -o yaml || true
+  kubectl get pod "${UNIT_NAME}" -o yaml || true
   exit 1
 fi
 
@@ -179,7 +183,7 @@ echo ""
 # Step 7: Verify ConfigHub live state
 echo "Step 7: Verify ConfigHub live state"
 echo "------------------------------------"
-LIVE_STATE=$(cub unit get-live-state test-pod --space confighub-tck --format json 2>/dev/null || echo "{}")
+LIVE_STATE=$(cub unit get-live-state "${UNIT_NAME}" --space confighub-tck --format json 2>/dev/null || echo "{}")
 
 if echo "$LIVE_STATE" | jq -e '.status.phase == "Running"' > /dev/null 2>&1; then
   echo "✅ ConfigHub live state shows: Running"
@@ -195,13 +199,13 @@ echo ""
 # Final verification
 echo "Step 8: Final verification"
 echo "--------------------------"
-POD_STATUS=$(kubectl get pod test-pod -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+POD_STATUS=$(kubectl get pod "${UNIT_NAME}" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
 
 if [ "$POD_STATUS" = "Running" ]; then
   echo "✅ Pod verified in Kubernetes: $POD_STATUS"
 else
   echo "❌ Pod not running in Kubernetes: $POD_STATUS"
-  kubectl describe pod test-pod || true
+  kubectl describe pod "${UNIT_NAME}" || true
   exit 1
 fi
 
@@ -213,7 +217,7 @@ echo ""
 echo "Summary:"
 echo "  ✅ Kind cluster: confighub-tck"
 echo "  ✅ ConfigHub space: confighub-tck"
-echo "  ✅ ConfigHub unit: test-pod"
+echo "  ✅ ConfigHub unit: ${UNIT_NAME}"
 echo "  ✅ Worker: tck-worker (connected)"
 echo "  ✅ Pod status: $POD_STATUS"
 echo "  ✅ ConfigHub → Kubernetes flow: WORKING"
