@@ -122,9 +122,17 @@ echo ""
 echo "Step 4: Install ConfigHub worker"
 echo "---------------------------------"
 kubectl config use-context kind-confighub-tck
-cub worker install tck-worker \
+
+if ! cub worker install tck-worker \
   --space confighub-tck \
-  --wait
+  --wait; then
+  echo "❌ Worker installation failed"
+  echo "   Checking worker status..."
+  cub worker list --space confighub-tck || true
+  kubectl get pods -n confighub || true
+  exit 1
+fi
+
 echo "✅ Worker installed and connected"
 echo ""
 
