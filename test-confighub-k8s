@@ -110,10 +110,11 @@ spec:
     - containerPort: 80
 EOF
 
-cub unit create test-pod \
+cub unit create \
   --space confighub-tck \
-  --data /tmp/tck-test-pod.yaml \
-  --label type=test
+  --label type=test \
+  test-pod \
+  /tmp/tck-test-pod.yaml
 echo "✅ Unit created in ConfigHub"
 echo ""
 
