@@ -22,7 +22,7 @@ A Go SDK for building DevOps automation applications using ConfigHub as the conf
 
 ## Overview
 
-Some requirements for apps built using this SDK include:
+The DevOps SDK enables building persistent, event-driven DevOps applications. Key characteristics:
 
 - **Persistent Apps**: Run continuously with Kubernetes informers, not just when triggered
 - **Event-Driven**: React immediately to changes, not on schedules
@@ -207,7 +207,7 @@ ConfigHub → Git → Flux/Argo → Kubernetes for production compliance.
 - Support for versioned packages
 
 ### ASCII Table Rendering (`tables.go`)
-- Beautiful Unicode box-drawing tables for terminal output
+- Unicode box-drawing tables for terminal output
 - Standardized table formats for ConfigHub resources
 - Color support with ANSI escape codes
 - Automatic column width calculation
@@ -684,11 +684,11 @@ All examples follow the same deployment pattern:
 
 This demonstrates the **ConfigHub → Worker → Kubernetes** deployment workflow that replaces traditional `kubectl apply` with ConfigHub-managed deployments.
 
-## Benefits
+## SDK Features
 
-1. **Reduces Boilerplate**: No need to initialize clients in every app
-2. **Standardized Patterns**: Consistent error handling and logging
-3. **Built-in Operations**: Health checks, metrics, graceful shutdown
-4. **Type Safety**: Strongly typed API clients
-5. **Testable**: Easy to mock individual components
-6. **Extensible**: Add new clients or utilities as needed
+1. Pre-initialized clients for ConfigHub, Kubernetes, and Claude AI
+2. Consistent error handling and logging patterns
+3. Health checks, metrics, and graceful shutdown support
+4. Strongly typed API clients
+5. Mockable components for testing
+6. Extensible architecture for additional clients and utilities
