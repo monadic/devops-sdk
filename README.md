@@ -30,6 +30,29 @@ The DevOps SDK enables building persistent, event-driven DevOps applications. Ke
 - **AI-Powered**: Integrated Claude AI for intelligent decisions
 - **Bulk Operations**: Sets and Filters for cross-environment operations
 
+## Mini TCK: ConfigHub + Kubernetes Integration Test
+
+The SDK includes a minimal Technology Compatibility Kit for verifying ConfigHub + Kubernetes integration:
+
+```bash
+./test-confighub-k8s
+```
+
+**What it tests:**
+- ✅ ConfigHub API connectivity
+- ✅ Kubernetes cluster access (creates Kind cluster)
+- ✅ Worker installation and connection
+- ✅ Unit apply workflow (ConfigHub → K8s)
+- ✅ Live state verification (K8s → ConfigHub)
+
+**Quick verification:**
+```bash
+# Run directly
+curl -fsSL https://raw.githubusercontent.com/monadic/devops-sdk/main/test-confighub-k8s | bash
+```
+
+This TCK is used by [TraderX](https://github.com/monadic/traderx) and [MicroTraderX](https://github.com/monadic/microtraderx) as a pre-flight check before deployments. See [TCK.md](TCK.md) for full documentation.
+
 ## Core Modules
 
 All content below this line 100% created by Claude.
